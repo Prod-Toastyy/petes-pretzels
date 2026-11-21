@@ -1,5 +1,32 @@
-const SAVE_KEY = "petes_pretzels_save_v2";
+const SAVE_KEY = "petes_pretzels_save_v4";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
+
+const RECIPES = {
+  classic: {
+    id: "classic",
+    name: "Classic Salted",
+    priceMult: 1.0,
+    demandMult: 1.0
+  },
+  cinnamon: {
+    id: "cinnamon",
+    name: "Cinnamon Sugar",
+    priceMult: 1.6,
+    demandMult: 1.15
+  },
+  bavarian: {
+    id: "bavarian",
+    name: "Bavarian Lye-Dipped",
+    priceMult: 2.5,
+    demandMult: 1.25
+  },
+  jalapeno: {
+    id: "jalapeno",
+    name: "Jalapeño Cheddar",
+    priceMult: 4.0,
+    demandMult: 1.40
+  }
+};
 
 const DEFAULT_STATE = {
   started: false,
@@ -11,10 +38,27 @@ const DEFAULT_STATE = {
   inventory: 0,
   funds: 0.0,
   researchPoints: 0,
+
+  dough: 200,
+  doughCost: 12.00,
+  doughPurchases: 0,
+  unlockedAutoDough: false,
+  autoDoughEnabled: false,
+  ranOutOfDoughOnce: false,
+  kneadClicks: 0,
+  handMadeDoughTotal: 0,
+
+  promoLevel: 1,
+  promoCost: 50.00,
+
   price: 0.50,
   demand: 100,
   demandBonus: 1.0,
+  dipBonus: 0.0,
   clickPower: 1,
+
+  activeRecipe: "classic",
+  unlockedRecipes: ["classic"],
 
   extruders: 0,
   extruderCost: 15.00,
@@ -39,11 +83,17 @@ const GameState = {
   ...JSON.parse(JSON.stringify(DEFAULT_STATE)),
 
   getBakeRate() {
+    if (this.dough <= 0) return 0;
     return this.extruders * this.extruderSpeed;
   },
 
   getMaxDeliveryRate() {
     return 1 + (this.trucks * this.truckCapacity) + (this.drones * this.droneCapacity);
+  },
+
+  getEffectivePrice() {
+    const recipe = RECIPES[this.activeRecipe] || RECIPES.classic;
+    return Math.round(((this.price * recipe.priceMult) + this.dipBonus) * 100) / 100;
   },
 
   save() {
@@ -73,15 +123,28 @@ const GameState = {
       this.lastTick = now;
 
       if (this.started && elapsedSeconds > 5) {
-        const produced = this.getBakeRate() * elapsedSeconds;
+        const potentialBake = this.extruders * this.extruderSpeed * elapsedSeconds;
+        if (this.unlockedAutoDough && this.autoDoughEnabled) {
+          const batchesNeeded = Math.ceil(Math.max(0, potentialBake - this.dough) / 500);
+          const affordableBatches = Math.min(batchesNeeded, Math.floor(this.funds / this.doughCost));
+          this.funds -= affordableBatches * this.doughCost;
+          this.dough += affordableBatches * 500;
+        }
+
+        const produced = Math.min(this.dough, potentialBake);
+        this.dough -= produced;
         this.pretzels += produced;
         this.inventory += produced;
+
+        if (this.dough <= 0 && potentialBake > 0) {
+          this.ranOutOfDoughOnce = true;
+        }
 
         const demandFactor = this.demand / 100;
         const maxSell = this.getMaxDeliveryRate() * demandFactor * elapsedSeconds;
         const sold = Math.min(this.inventory, maxSell);
         this.inventory -= sold;
-        this.funds += sold * this.price;
+        this.funds += sold * this.getEffectivePrice();
 
         return elapsedSeconds;
       }

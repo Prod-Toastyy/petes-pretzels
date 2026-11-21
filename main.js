@@ -27,10 +27,11 @@ const Projects = [
   // Early Production & Dough
   {
     id: "manual_gloves",
-    currency: "cash",
+    icon: "[🧤]",
     title: "Asbestos Baker's Mitts",
     desc: "Bake 2 pretzels per click (uses 2 lbs dough).",
-    cost: 25,
+    cashCost: 25,
+    rpCost: 0,
     trigger: () => GameState.pretzels >= 20,
     effect: () => {
       GameState.clickPower = 2;
@@ -39,10 +40,11 @@ const Projects = [
   },
   {
     id: "faster_extruders",
-    currency: "cash",
+    icon: "[🔩]",
     title: "High-Torque Dough Nozzles",
     desc: "Doubles Auto-Extruder output.",
-    cost: 65,
+    cashCost: 65,
+    rpCost: 0,
     trigger: () => GameState.extruders >= 3,
     effect: () => {
       GameState.extruderSpeed *= 2;
@@ -51,10 +53,11 @@ const Projects = [
   },
   {
     id: "unlock_trucks",
-    currency: "cash",
+    icon: "[🚚]",
     title: "Regional Delivery Fleet",
     desc: "Unlocks Delivery Trucks to move bulk inventory.",
-    cost: 150,
+    cashCost: 150,
+    rpCost: 0,
     trigger: () => GameState.pretzels >= 120,
     effect: () => {
       GameState.unlockedTrucks = true;
@@ -65,10 +68,11 @@ const Projects = [
   },
   {
     id: "unlock_minigame",
-    currency: "cash",
+    icon: "[◎]",
     title: "R&D Ballistic Test Range",
     desc: "Unlocks target range mini-game for Research Points (RP).",
-    cost: 220,
+    cashCost: 220,
+    rpCost: 0,
     trigger: () => GameState.pretzels >= 200,
     effect: () => {
       GameState.unlockedMinigame = true;
@@ -81,10 +85,11 @@ const Projects = [
   // Cheese Dips (Stackable +$ Per Pretzel)
   {
     id: "dip_cheddar",
-    currency: "cash",
+    icon: "[🧀]",
     title: "Dip: Warm Cheddar Cup",
     desc: "Adds +$0.25 to every pretzel sold.",
-    cost: 320,
+    cashCost: 320,
+    rpCost: 0,
     trigger: () => GameState.pretzels >= 280,
     effect: () => {
       GameState.dipBonus += 0.25;
@@ -92,27 +97,29 @@ const Projects = [
     }
   },
   {
-    id: "auto_dough_silo",
-    currency: "cash",
-    title: "Automated Flour Silo",
+    id: "rp_auto_dough",
+    icon: "[⚖️]",
+    title: "Precision Auto-Dough Silo",
     desc: "Unlocks Auto-Buyer to restock dough automatically below 100 lbs.",
-    cost: 350,
-    trigger: () => GameState.doughPurchases >= 2,
+    cashCost: 400,
+    rpCost: 10,
+    trigger: () => GameState.unlockedMinigame && (GameState.doughPurchases >= 1 || GameState.ranOutOfDoughOnce),
     effect: () => {
       GameState.unlockedAutoDough = true;
       GameState.autoDoughEnabled = true;
       showEl("btn-toggle-autodough");
-      logMessage("Automated Flour Silo active.");
+      logMessage("Precision Auto-Dough Silo online!");
     }
   },
 
   // Unlockable Pretzel Varieties
   {
     id: "recipe_cinnamon",
-    currency: "cash",
+    icon: "[🍯]",
     title: "Recipe: Cinnamon Sugar",
     desc: "Unlocks Cinnamon Sugar pretzels (1.6x price, +15% demand).",
-    cost: 450,
+    cashCost: 450,
+    rpCost: 0,
     trigger: () => GameState.pretzels >= 400,
     effect: () => {
       unlockRecipe("cinnamon");
@@ -121,10 +128,11 @@ const Projects = [
   },
   {
     id: "industrial_ovens",
-    currency: "cash",
+    icon: "[🔥]",
     title: "Industrial Steam Ovens",
     desc: "Doubles Auto-Extruder speed again.",
-    cost: 600,
+    cashCost: 600,
+    rpCost: 0,
     trigger: () => GameState.extruders >= 8,
     effect: () => {
       GameState.extruderSpeed *= 2;
@@ -133,10 +141,11 @@ const Projects = [
   },
   {
     id: "turbo_dispatch",
-    currency: "cash",
+    icon: "[⚡]",
     title: "Turbocharged Route Dispatch",
     desc: "Doubles Delivery Truck capacity.",
-    cost: 950,
+    cashCost: 950,
+    rpCost: 0,
     trigger: () => GameState.trucks >= 3,
     effect: () => {
       GameState.truckCapacity *= 2;
@@ -145,10 +154,11 @@ const Projects = [
   },
   {
     id: "dip_beer_cheese",
-    currency: "cash",
+    icon: "[🍺]",
     title: "Dip: Sharp Beer Cheese",
     desc: "Adds +$0.75 to every pretzel sold.",
-    cost: 1400,
+    cashCost: 1400,
+    rpCost: 0,
     trigger: () => GameState.completedProjects.includes("dip_cheddar") && GameState.pretzels >= 1200,
     effect: () => {
       GameState.dipBonus += 0.75;
@@ -157,10 +167,11 @@ const Projects = [
   },
   {
     id: "recipe_bavarian",
-    currency: "cash",
+    icon: "[🥨]",
     title: "Recipe: Bavarian Lye-Dipped",
     desc: "Unlocks authentic Bavarian pretzels (2.5x price, +25% demand).",
-    cost: 1800,
+    cashCost: 1800,
+    rpCost: 0,
     trigger: () => GameState.unlockedRecipes.includes("cinnamon") && GameState.pretzels >= 1600,
     effect: () => {
       unlockRecipe("bavarian");
@@ -169,10 +180,11 @@ const Projects = [
   },
   {
     id: "sea_salt_glaze",
-    currency: "cash",
+    icon: "[🧂]",
     title: "Artisanal Sea Salt Glaze",
     desc: "Permanently increases public demand by +35%.",
-    cost: 2800,
+    cashCost: 2800,
+    rpCost: 0,
     trigger: () => GameState.pretzels >= 2500,
     effect: () => {
       GameState.demandBonus += 0.35;
@@ -182,10 +194,11 @@ const Projects = [
   },
   {
     id: "unlock_drones",
-    currency: "cash",
+    icon: "[🛸]",
     title: "Autonomous Drone Network",
     desc: "Unlocks high-speed Pretzel Drones.",
-    cost: 3500,
+    cashCost: 3500,
+    rpCost: 0,
     trigger: () => GameState.trucks >= 5 && GameState.pretzels >= 4000,
     effect: () => {
       GameState.unlockedDrones = true;
@@ -196,10 +209,11 @@ const Projects = [
   },
   {
     id: "warming_racks",
-    currency: "cash",
+    icon: "[♨️]",
     title: "Insulated Warming Racks",
     desc: "Increases Delivery Truck capacity by 2.5x.",
-    cost: 4200,
+    cashCost: 4200,
+    rpCost: 0,
     trigger: () => GameState.trucks >= 8,
     effect: () => {
       GameState.truckCapacity = Math.round(GameState.truckCapacity * 2.5);
@@ -208,10 +222,11 @@ const Projects = [
   },
   {
     id: "lidar_drones",
-    currency: "cash",
+    icon: "[📡]",
     title: "LIDAR Roof-Drop Guidance",
     desc: "Doubles Pretzel Drone delivery capacity.",
-    cost: 18000,
+    cashCost: 18000,
+    rpCost: 0,
     trigger: () => GameState.drones >= 3,
     effect: () => {
       GameState.droneCapacity *= 2;
@@ -220,10 +235,11 @@ const Projects = [
   },
   {
     id: "suborbital_pods",
-    currency: "cash",
+    icon: "[🚀]",
     title: "Sub-Orbital Pretzel Pods",
     desc: "Triples Pretzel Drone delivery capacity.",
-    cost: 75000,
+    cashCost: 75000,
+    rpCost: 0,
     trigger: () => GameState.drones >= 8,
     effect: () => {
       GameState.droneCapacity *= 3;
@@ -231,13 +247,14 @@ const Projects = [
     }
   },
 
-  // Research Point (RP) Upgrades
+  // Hybrid Cash + Research Point (RP) Upgrades
   {
     id: "rp_cryo_extruder",
-    currency: "rp",
+    icon: "[❄️]",
     title: "Cryo-Cooled Extruder Cores",
     desc: "3x Auto-Extruder output speed.",
-    cost: 15,
+    cashCost: 850,
+    rpCost: 15,
     trigger: () => GameState.unlockedMinigame,
     effect: () => {
       GameState.extruderSpeed *= 3;
@@ -246,10 +263,11 @@ const Projects = [
   },
   {
     id: "rp_dip_queso",
-    currency: "rp",
+    icon: "[🌶️]",
     title: "Dip: Spicy Queso Blanco",
     desc: "Adds +$2.00 to every pretzel sold.",
-    cost: 25,
+    cashCost: 2200,
+    rpCost: 25,
     trigger: () => GameState.unlockedMinigame && GameState.completedProjects.includes("dip_beer_cheese"),
     effect: () => {
       GameState.dipBonus += 2.00;
@@ -258,10 +276,11 @@ const Projects = [
   },
   {
     id: "rp_aero_trucks",
-    currency: "rp",
+    icon: "[💨]",
     title: "Aerodynamic Truck Fairings",
     desc: "2x Delivery Truck hauling capacity.",
-    cost: 30,
+    cashCost: 3000,
+    rpCost: 30,
     trigger: () => GameState.unlockedMinigame && GameState.unlockedTrucks,
     effect: () => {
       GameState.truckCapacity *= 2;
@@ -270,10 +289,11 @@ const Projects = [
   },
   {
     id: "rp_recipe_jalapeno",
-    currency: "rp",
+    icon: "[🧀]",
     title: "Recipe: Jalapeño Cheddar",
     desc: "Unlocks gourmet Jalapeño Cheddar pretzels (4.0x price, +40% demand).",
-    cost: 40,
+    cashCost: 4800,
+    rpCost: 40,
     trigger: () => GameState.unlockedMinigame && GameState.unlockedRecipes.includes("bavarian"),
     effect: () => {
       unlockRecipe("jalapeno");
@@ -282,10 +302,11 @@ const Projects = [
   },
   {
     id: "rp_quantum_yeast",
-    currency: "rp",
+    icon: "[🧬]",
     title: "Quantum Yeast Catalyst",
     desc: "+50% public demand & 2x manual bake power.",
-    cost: 50,
+    cashCost: 7500,
+    rpCost: 50,
     trigger: () => GameState.unlockedMinigame && GameState.researchPoints >= 15,
     effect: () => {
       GameState.demandBonus += 0.50;
@@ -296,10 +317,11 @@ const Projects = [
   },
   {
     id: "rp_drone_thrusters",
-    currency: "rp",
+    icon: "[☄️]",
     title: "Overclocked Drone Thrusters",
     desc: "3x Pretzel Drone delivery speed.",
-    cost: 85,
+    cashCost: 25000,
+    rpCost: 85,
     trigger: () => GameState.unlockedMinigame && GameState.unlockedDrones,
     effect: () => {
       GameState.droneCapacity *= 3;
@@ -359,6 +381,10 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.dough)) GameState.dough = 200;
   if (!Number.isFinite(GameState.doughCost) || GameState.doughCost <= 0) GameState.doughCost = 12.00;
   if (!Number.isFinite(GameState.doughPurchases)) GameState.doughPurchases = 0;
+  if (!Number.isFinite(GameState.kneadClicks)) GameState.kneadClicks = 0;
+  if (!Number.isFinite(GameState.handMadeDoughTotal)) GameState.handMadeDoughTotal = 0;
+  if (!Number.isFinite(GameState.promoLevel) || GameState.promoLevel < 1) GameState.promoLevel = 1;
+  if (!Number.isFinite(GameState.promoCost) || GameState.promoCost <= 0) GameState.promoCost = 50.00;
   if (!Number.isFinite(GameState.price) || GameState.price <= 0) GameState.price = 0.50;
   if (!Number.isFinite(GameState.demandBonus) || GameState.demandBonus <= 0) GameState.demandBonus = 1.0;
   if (!Number.isFinite(GameState.dipBonus)) GameState.dipBonus = 0;
@@ -394,12 +420,30 @@ function getEffectivePriceSafe() {
   return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * 100) / 100;
 }
 
+function triggerOutOfDoughCheck() {
+  if (GameState.dough <= 0) {
+    GameState.dough = 0;
+    if (!GameState.ranOutOfDoughOnce) {
+      GameState.ranOutOfDoughOnce = true;
+      showEl("panel-hand-dough");
+      logMessage("Out of dough! Emergency Hand-Kneader unlocked in Production.");
+    }
+  }
+}
+
 function bakePretzels(requestedAmount) {
-  if (GameState.dough <= 0) return 0;
+  if (GameState.dough <= 0) {
+    triggerOutOfDoughCheck();
+    return 0;
+  }
   const actualBaked = Math.min(GameState.dough, requestedAmount);
   GameState.dough -= actualBaked;
   GameState.pretzels += actualBaked;
   GameState.inventory += actualBaked;
+
+  if (GameState.dough <= 0) {
+    triggerOutOfDoughCheck();
+  }
   return actualBaked;
 }
 
@@ -451,7 +495,8 @@ function refreshRecipeDropdown() {
 
 function updateDemand() {
   const recipe = getSafeRecipe();
-  const rawDemand = (0.50 / GameState.price) * 100 * GameState.demandBonus * recipe.demandMult;
+  const promoMult = 1 + ((GameState.promoLevel - 1) * 0.20);
+  const rawDemand = (0.50 / GameState.price) * 100 * GameState.demandBonus * recipe.demandMult * promoMult;
   GameState.demand = Math.max(5, Math.round(rawDemand));
 }
 
@@ -541,6 +586,7 @@ function applySessionUI() {
 
   refreshRecipeDropdown();
 
+  if (GameState.ranOutOfDoughOnce) showEl("panel-hand-dough");
   if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
   if (GameState.unlockedAutomation) showEl("panel-automation");
   if (GameState.unlockedTrucks || GameState.unlockedDrones) showEl("system-delivery");
@@ -558,7 +604,9 @@ function applySessionUI() {
 function bindControls() {
   onClick("btn-bake", () => {
     if (GameState.dough <= 0) {
-      logMessage("Out of dough! Buy a 500 lb bag to keep baking.");
+      triggerOutOfDoughCheck();
+      logMessage("Out of dough! Hand-knead flour or buy a 500 lb bag.");
+      render();
       return;
     }
     bakePretzels(GameState.clickPower);
@@ -575,6 +623,29 @@ function bindControls() {
   onClick("btn-toggle-autodough", () => {
     GameState.autoDoughEnabled = !GameState.autoDoughEnabled;
     render();
+  });
+
+  onClick("btn-knead-dough", () => {
+    GameState.kneadClicks += 1;
+    if (GameState.kneadClicks >= 30) {
+      GameState.kneadClicks = 0;
+      GameState.dough += 1;
+      GameState.handMadeDoughTotal += 1;
+      logMessage("Hand-kneaded +1 lb of emergency dough!");
+    }
+    render();
+  });
+
+  onClick("btn-buy-promo", () => {
+    if (GameState.funds >= GameState.promoCost) {
+      GameState.funds -= GameState.promoCost;
+      GameState.promoLevel += 1;
+      GameState.promoCost = Math.round(GameState.promoCost * 1.75 * 100) / 100;
+      updateDemand();
+      logMessage(`Marketing upgraded to Level ${GameState.promoLevel} (+20% Demand)!`);
+      GameState.save();
+      render();
+    }
   });
 
   const recipeSelect = document.getElementById("select-recipe");
@@ -644,17 +715,20 @@ function bindControls() {
 }
 
 function canAffordProject(proj) {
-  if (proj.currency === "rp") {
-    return GameState.researchPoints >= proj.cost;
-  }
-  return GameState.funds >= proj.cost;
+  const hasCash = GameState.funds >= (proj.cashCost || 0);
+  const hasRP = GameState.researchPoints >= (proj.rpCost || 0);
+  return hasCash && hasRP;
 }
 
 function formatProjectCost(proj) {
-  if (proj.currency === "rp") {
-    return `${proj.cost} RP`;
+  const parts = [];
+  if (proj.cashCost > 0) {
+    parts.push(`$${proj.cashCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
   }
-  return `$${proj.cost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+  if (proj.rpCost > 0) {
+    parts.push(`${proj.rpCost} RP`);
+  }
+  return parts.join(" + ");
 }
 
 function checkUnlocks() {
@@ -673,11 +747,12 @@ function checkUnlocks() {
 
       if (!document.getElementById(`proj-${proj.id}`)) {
         const affordable = canAffordProject(proj);
+        const isHybridRP = proj.rpCost > 0;
         const card = document.createElement("div");
-        card.className = "project-card" + (affordable ? "" : " locked") + (proj.currency === "rp" ? " rp-card" : "");
+        card.className = "project-card" + (affordable ? "" : " locked") + (isHybridRP ? " rp-card" : "");
         card.id = `proj-${proj.id}`;
         card.innerHTML = `
-          <p><strong>${proj.title}</strong> (${formatProjectCost(proj)})</p>
+          <p>${proj.icon || "[★]"} <strong>${proj.title}</strong> (${formatProjectCost(proj)})</p>
           <p class="subtext">${proj.desc}</p>
           <button id="btn-${proj.id}" ${affordable ? "" : "disabled"}>Research</button>
         `;
@@ -685,11 +760,8 @@ function checkUnlocks() {
 
         onClick(`btn-${proj.id}`, () => {
           if (canAffordProject(proj)) {
-            if (proj.currency === "rp") {
-              GameState.researchPoints -= proj.cost;
-            } else {
-              GameState.funds -= proj.cost;
-            }
+            if (proj.cashCost > 0) GameState.funds -= proj.cashCost;
+            if (proj.rpCost > 0) GameState.researchPoints -= proj.rpCost;
             GameState.completedProjects.push(proj.id);
             proj.effect();
             card.remove();
@@ -707,25 +779,28 @@ function render() {
   const maxDelivery = 1 + (GameState.trucks * GameState.truckCapacity) + (GameState.drones * GameState.droneCapacity);
   const effectiveDelivery = maxDelivery * (GameState.demand / 100);
   const netPrice = getEffectivePriceSafe();
+  const formattedFunds = GameState.funds.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  setText("top-funds", formattedFunds);
   setText("pretzels-total", Math.floor(GameState.pretzels).toLocaleString());
   setText("inventory", Math.floor(GameState.inventory).toLocaleString());
-  setText("funds", GameState.funds.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setText("rp-total", Math.floor(GameState.researchPoints).toLocaleString());
   setText("price", GameState.price.toFixed(2));
   setText("effective-price", netPrice.toFixed(2));
   setText("demand", GameState.demand);
   setText("click-power", GameState.clickPower);
 
+  // Dough & Hand-Kneader UI
   setText("dough-amount", Math.floor(GameState.dough).toLocaleString());
   setText("dough-cost", GameState.doughCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setDisabled("btn-buy-dough", GameState.funds < GameState.doughCost);
   setDisabled("btn-bake", GameState.dough < 1);
+  setText("knead-progress", GameState.kneadClicks);
 
   const doughStatus = document.getElementById("dough-status");
   if (doughStatus) {
     if (GameState.dough <= 0) {
-      doughStatus.textContent = "OUT OF DOUGH! Restock to bake.";
+      doughStatus.textContent = "OUT OF DOUGH! Restock or hand-knead.";
       doughStatus.style.color = "#e86848";
     } else if (GameState.dough < 50) {
       doughStatus.textContent = "Low dough warning!";
@@ -740,6 +815,12 @@ function render() {
   if (autoBtn && GameState.unlockedAutoDough) {
     autoBtn.textContent = `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`;
   }
+
+  // Marketing / Promotion UI
+  setText("promo-level", GameState.promoLevel);
+  setText("promo-cost", GameState.promoCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  setText("promo-bonus", `+${(GameState.promoLevel - 1) * 20}%`);
+  setDisabled("btn-buy-promo", GameState.funds < GameState.promoCost);
 
   setText("bake-rate", bakeRate.toLocaleString());
   setText("sell-rate", effectiveDelivery.toFixed(1));

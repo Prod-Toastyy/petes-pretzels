@@ -28,6 +28,10 @@
     <div id="console-box">
       <div id="console-log">> Pete's Pretzels</div>
     </div>
+    <div id="top-funds-badge" class="top-stat-badge">
+      <span class="badge-label">Funds</span>
+      <span class="badge-value">$<span id="top-funds">0.00</span></span>
+    </div>
     <div id="player-badge">
       <span id="display-player-name"></span>
     </div>
@@ -47,11 +51,11 @@
     
     <!-- Row 1: Production -->
     <section class="row-panel" id="row-production">
-      <h2>Production</h2>
+      <h2>[♨] Production</h2>
       <div class="row-items">
         
         <div class="module-box">
-          <button id="btn-bake">Bake Pretzel (+<span id="click-power">1</span>)</button>
+          <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
           <p>Unsold Inventory: <span id="inventory">0</span></p>
           <div id="recipe-box" class="recipe-row hidden">
             <label for="select-recipe" class="subtext">Menu:</label>
@@ -60,15 +64,21 @@
         </div>
 
         <div class="module-box">
-          <p>Dough Supply: <strong id="dough-amount">200</strong> lbs</p>
+          <p>[🌾] Dough Supply: <strong id="dough-amount">200</strong> lbs</p>
           <button id="btn-buy-dough">Buy 500 lbs Dough ($<span id="dough-cost">12.00</span>)</button>
           <button id="btn-toggle-autodough" class="hidden">Auto-Buyer: OFF</button>
           <p class="subtext" id="dough-status">1 lb dough = 1 pretzel</p>
         </div>
 
+        <!-- Emergency Hand-Kneader (Appears once you run out of dough) -->
+        <div class="module-box hidden" id="panel-hand-dough">
+          <p>[👐] <strong>Emergency Dough Maker</strong></p>
+          <button id="btn-knead-dough">Hand-Knead Flour (<span id="knead-progress">0</span>/30)</button>
+          <p class="subtext">30 clicks = +1 lb emergency dough</p>
+        </div>
+
         <div class="module-box">
-          <p>Funds: $<span id="funds">0.00</span></p>
-          <p>Base Price: $<span id="price">0.50</span> <span class="subtext">(Net: $<span id="effective-price">0.50</span>)</span></p>
+          <p>[🏷️] Base Price: $<span id="price">0.50</span> <span class="subtext">(Net: $<span id="effective-price">0.50</span>)</span></p>
           <div class="btn-row">
             <button id="btn-price-down">Lower Price</button>
             <button id="btn-price-up">Raise Price</button>
@@ -76,8 +86,14 @@
           <p class="subtext">Public Demand: <span id="demand">100</span>%</p>
         </div>
 
+        <div class="module-box">
+          <p>[📣] Marketing: <strong>Lvl <span id="promo-level">1</span></strong></p>
+          <button id="btn-buy-promo">Promote Bakery ($<span id="promo-cost">50.00</span>)</button>
+          <p class="subtext">+20% Demand per level (<span id="promo-bonus">+0%</span>)</p>
+        </div>
+
         <div class="module-box hidden" id="panel-automation">
-          <button id="btn-buy-extruder">Auto-Extruder (<span id="extruder-count">0</span>)</button>
+          <button id="btn-buy-extruder">[⚙️] Auto-Extruder (<span id="extruder-count">0</span>)</button>
           <p class="subtext">Cost: $<span id="extruder-cost">15.00</span> | +<span id="extruder-rate">1</span>/sec each</p>
         </div>
 
@@ -86,16 +102,16 @@
 
     <!-- Row 2: Delivery -->
     <section class="row-panel hidden" id="system-delivery">
-      <h2>Delivery</h2>
+      <h2>[⛟] Delivery</h2>
       <div class="row-items">
         
         <div class="module-box hidden" id="panel-trucks">
-          <button id="btn-buy-truck">Delivery Truck (<span id="truck-count">0</span>)</button>
+          <button id="btn-buy-truck">[🚚] Delivery Truck (<span id="truck-count">0</span>)</button>
           <p class="subtext">Cost: $<span id="truck-cost">250.00</span> | Delivers <span id="truck-rate">8</span>/sec each</p>
         </div>
 
         <div class="module-box hidden" id="panel-drones">
-          <button id="btn-buy-drone">Pretzel Drone (<span id="drone-count">0</span>)</button>
+          <button id="btn-buy-drone">[🛸] Pretzel Drone (<span id="drone-count">0</span>)</button>
           <p class="subtext">Cost: $<span id="drone-cost">5000.00</span> | Delivers <span id="drone-rate">75</span>/sec each</p>
         </div>
 
@@ -105,14 +121,14 @@
     <!-- Row 3: R&D -->
     <section class="row-panel hidden" id="panel-projects">
       <div class="row-header">
-        <h2>R&D</h2>
+        <h2>[⚗] R&D</h2>
         <span id="rp-badge" class="rp-badge hidden">Research Points: <strong id="rp-total">0</strong> RP</span>
       </div>
       <div class="row-items">
         
         <!-- Target Mini-Game Box -->
         <div class="module-box hidden" id="panel-minigame">
-          <p><strong>Ballistic Dough Tester</strong></p>
+          <p><strong>[◎] Ballistic Dough Tester</strong></p>
           <div id="range-track" class="range-track">
             <div class="range-target"></div>
             <div id="range-crosshair" class="range-crosshair">+</div>
