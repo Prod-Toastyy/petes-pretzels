@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pete's Pretzels</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Lora:wght@600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Start Setup -->
+  <div id="setup-modal" class="modal-overlay">
+    <div class="modal-card">
+      <label for="input-player-name">Name</label>
+      <input type="text" id="input-player-name" maxlength="28" autocomplete="off">
+
+      <div id="ascii-picker-grid" class="ascii-grid"></div>
+
+      <button id="btn-start-game" class="primary-btn">Start</button>
+    </div>
+  </div>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div id="console-box">
+      <div id="console-log">> Pete's Pretzels</div>
+    </div>
+    <div id="player-badge">
+      <span id="display-player-name"></span>
+    </div>
+  </div>
+
+  <!-- Header & Selected ASCII -->
+  <header>
+    <div>
+      <h1>Pretzels Baked: <span id="pretzels-total">0</span></h1>
+      <p class="subtext">Rate: <span id="bake-rate">0.0</span>/sec baked | <span id="sell-rate">1.0</span>/sec max delivery</p>
+    </div>
+    <pre id="ascii-stage"></pre>
+  </header>
+
+  <!-- 3 Horizontal Rows (Zero Scrolling) -->
+  <main class="rows-container">
+    
+    <!-- Row 1: Production -->
+    <section class="row-panel" id="row-production">
+      <h2>Production</h2>
+      <div class="row-items">
+        
+        <div class="module-box">
+          <button id="btn-bake">Bake Pretzel (+<span id="click-power">1</span>)</button>
+          <p>Unsold Inventory: <span id="inventory">0</span></p>
+        </div>
+
+        <div class="module-box">
+          <p>Funds: $<span id="funds">0.00</span></p>
+          <p>Price per Pretzel: $<span id="price">0.50</span></p>
+          <div class="btn-row">
+            <button id="btn-price-down">Lower Price</button>
+            <button id="btn-price-up">Raise Price</button>
+          </div>
+          <p class="subtext">Public Demand: <span id="demand">100</span>%</p>
+        </div>
+
+        <div class="module-box hidden" id="panel-automation">
+          <button id="btn-buy-extruder">Auto-Extruder (<span id="extruder-count">0</span>)</button>
+          <p class="subtext">Cost: $<span id="extruder-cost">15.00</span> | +<span id="extruder-rate">1</span>/sec each</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Row 2: Delivery -->
+    <section class="row-panel hidden" id="system-delivery">
+      <h2>Delivery</h2>
+      <div class="row-items">
+        
+        <div class="module-box hidden" id="panel-trucks">
+          <button id="btn-buy-truck">Delivery Truck (<span id="truck-count">0</span>)</button>
+          <p class="subtext">Cost: $<span id="truck-cost">250.00</span> | Delivers <span id="truck-rate">8</span>/sec each</p>
+        </div>
+
+        <div class="module-box hidden" id="panel-drones">
+          <button id="btn-buy-drone">Pretzel Drone (<span id="drone-count">0</span>)</button>
+          <p class="subtext">Cost: $<span id="drone-cost">5000.00</span> | Delivers <span id="drone-rate">75</span>/sec each</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Row 3: R&D -->
+    <section class="row-panel hidden" id="panel-projects">
+      <div class="row-header">
+        <h2>R&D</h2>
+        <span id="rp-badge" class="rp-badge hidden">Research Points: <strong id="rp-total">0</strong> RP</span>
+      </div>
+      <div class="row-items">
+        
+        <!-- Target Mini-Game Box (Unlocks via R&D project) -->
+        <div class="module-box hidden" id="panel-minigame">
+          <p><strong>Ballistic Dough Tester</strong></p>
+          <div id="range-track" class="range-track">
+            <div class="range-target"></div>
+            <div id="range-crosshair" class="range-crosshair">+</div>
+          </div>
+          <button id="btn-shoot-target">Fire Test Shot [Space]</button>
+          <p class="subtext" id="range-feedback">Hit center for +3 RP (Graze: +1 RP)</p>
+        </div>
+
+        <!-- Dynamic Research Cards -->
+        <div id="projects-list" class="projects-wrap"></div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <script src="ascii.js"></script>
+  <script src="state.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

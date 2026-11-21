@@ -1,0 +1,373 @@
+* {
+  box-sizing: border-box;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+body {
+  background-color: #1e1916;
+  color: #f4ece1;
+  margin: 0;
+  padding: 16px 24px;
+  line-height: 1.4;
+}
+
+h1, h2, h3 {
+  font-family: 'Lora', Georgia, serif;
+  color: #f7d9b4;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 18px;
+  border-bottom: 1px solid #3e332c;
+  padding-bottom: 6px;
+}
+
+p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+#console-box {
+  flex: 1;
+  background: #29221e;
+  border: 1px solid #463a33;
+  border-radius: 10px;
+  padding: 10px 16px;
+  color: #e89f48;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+#player-badge {
+  background: #29221e;
+  border: 1px solid #6b5344;
+  border-radius: 10px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 140px;
+}
+
+#display-player-name {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e89f48;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #251f1b;
+  border: 1px solid #3e332c;
+  border-radius: 12px;
+  padding: 12px 22px;
+  margin-bottom: 16px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+#ascii-stage {
+  color: #e89f48;
+  font-size: 11px;
+  line-height: 1.1;
+  margin: 0;
+  background: #1a1512;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #3a2f29;
+  min-width: 165px;
+  text-align: center;
+  transition: border-color 0.2s ease;
+}
+
+@keyframes gentle-sway {
+  0%, 100% { transform: rotate(-1.5deg); }
+  50% { transform: rotate(1.5deg); }
+}
+
+.ascii-sway {
+  animation: gentle-sway 3s ease-in-out infinite;
+  border-color: #e89f48 !important;
+}
+
+/* 3 Horizontal Rows */
+.rows-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.row-panel {
+  background: #29221e;
+  border: 1px solid #42362f;
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+
+.row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #3e332c;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+
+.row-header h2 {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.rp-badge {
+  background: #1d2a29;
+  border: 1px solid #4fa89b;
+  color: #8ce3d5;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.row-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.projects-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  flex: 2;
+}
+
+.module-box {
+  background: #221c18;
+  border: 1px solid #3e332c;
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 220px;
+  flex: 1;
+}
+
+.hidden {
+  display: none !important;
+}
+
+button {
+  background: #382e28;
+  color: #f4ece1;
+  border: 1px solid #5c4b41;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  width: 100%;
+  margin-bottom: 6px;
+  transition: all 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: #e89f48;
+  color: #1e1916;
+  border-color: #e89f48;
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.subtext {
+  font-size: 12px;
+  color: #b59f8d;
+  margin-top: 2px;
+}
+
+/* Target Range Mini-Game */
+.range-track {
+  position: relative;
+  height: 30px;
+  background: #171310;
+  border: 1px solid #4a3c34;
+  border-radius: 6px;
+  margin: 8px 0;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.range-target {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 20px;
+  border: 1px dashed #4fa89b;
+  background: rgba(79, 168, 155, 0.14);
+  border-radius: 4px;
+}
+
+.range-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  transform: translate(-50%, -50%);
+  color: #e89f48;
+  font-weight: 600;
+  font-size: 16px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.range-track.flash-hit {
+  border-color: #4fa89b;
+  background: #192927;
+}
+
+.range-track.flash-miss {
+  border-color: #a84f4f;
+  background: #291919;
+}
+
+/* Research Project Cards */
+.project-card {
+  border: 1px solid #4a3c34;
+  background: #221c18;
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 220px;
+  flex: 1;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.project-card.rp-card {
+  border-color: #3a6b64;
+}
+
+.project-card.rp-card button:hover:not(:disabled) {
+  background: #4fa89b;
+  border-color: #4fa89b;
+  color: #141c1b;
+}
+
+.project-card.locked {
+  opacity: 0.45;
+  border-color: #352b25;
+}
+
+/* Setup Modal & Selectable 12-Art Grid */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 14, 12, 0.92);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-card {
+  background: #29221e;
+  border: 1px solid #6b5344;
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 760px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-card label {
+  display: block;
+  font-size: 13px;
+  color: #f7d9b4;
+  margin-bottom: 6px;
+}
+
+.modal-card input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #5c4b41;
+  background: #1a1512;
+  color: #f4ece1;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.modal-card input:focus {
+  outline: none;
+  border-color: #e89f48;
+}
+
+.ascii-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.ascii-option {
+  background: #1a1512;
+  border: 2px solid #3e332c;
+  border-radius: 8px;
+  padding: 12px 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  user-select: none;
+}
+
+.ascii-option:hover {
+  border-color: #9e7b66;
+}
+
+.ascii-option.selected {
+  border-color: #e89f48;
+  background: #33271f;
+}
+
+.ascii-option pre {
+  color: #e89f48;
+  font-size: 10px;
+  line-height: 1.1;
+  margin: 0;
+  pointer-events: none;
+}
+
+.primary-btn {
+  background: #e89f48;
+  color: #1e1916;
+  font-weight: 600;
+  border: none;
+  padding: 12px;
+  font-size: 15px;
+}
