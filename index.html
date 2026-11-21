@@ -19,7 +19,7 @@
 
       <div id="ascii-picker-grid" class="ascii-grid"></div>
 
-      <button id="btn-start-game" class="primary-btn">Start</button>
+      <button type="button" id="btn-start-game" class="primary-btn" onclick="if(window.startGameFromModal) window.startGameFromModal()">Start</button>
     </div>
   </div>
 
@@ -53,11 +53,22 @@
         <div class="module-box">
           <button id="btn-bake">Bake Pretzel (+<span id="click-power">1</span>)</button>
           <p>Unsold Inventory: <span id="inventory">0</span></p>
+          <div id="recipe-box" class="recipe-row hidden">
+            <label for="select-recipe" class="subtext">Menu:</label>
+            <select id="select-recipe"></select>
+          </div>
+        </div>
+
+        <div class="module-box">
+          <p>Dough Supply: <strong id="dough-amount">200</strong> lbs</p>
+          <button id="btn-buy-dough">Buy 500 lbs Dough ($<span id="dough-cost">12.00</span>)</button>
+          <button id="btn-toggle-autodough" class="hidden">Auto-Buyer: OFF</button>
+          <p class="subtext" id="dough-status">1 lb dough = 1 pretzel</p>
         </div>
 
         <div class="module-box">
           <p>Funds: $<span id="funds">0.00</span></p>
-          <p>Price per Pretzel: $<span id="price">0.50</span></p>
+          <p>Base Price: $<span id="price">0.50</span> <span class="subtext">(Net: $<span id="effective-price">0.50</span>)</span></p>
           <div class="btn-row">
             <button id="btn-price-down">Lower Price</button>
             <button id="btn-price-up">Raise Price</button>
@@ -99,7 +110,7 @@
       </div>
       <div class="row-items">
         
-        <!-- Target Mini-Game Box (Unlocks via R&D project) -->
+        <!-- Target Mini-Game Box -->
         <div class="module-box hidden" id="panel-minigame">
           <p><strong>Ballistic Dough Tester</strong></p>
           <div id="range-track" class="range-track">
