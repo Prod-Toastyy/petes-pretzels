@@ -106,6 +106,19 @@ const Projects = [
     }
   },
   {
+    id: "dough_pallet_1",
+    icon: "[📦]",
+    title: "Palletized Flour Delivery",
+    desc: "Increases Dough bought per order from 500 lbs to 1,500 lbs.",
+    cashCost: 275,
+    rpCost: 0,
+    trigger: () => GameState.doughPurchases >= 2,
+    effect: () => {
+      GameState.doughBatchSize = 1500;
+      logMessage("Upgraded: Dough orders now deliver 1,500 lbs per batch!");
+    }
+  },
+  {
     id: "dip_cheddar",
     icon: "[🧀]",
     title: "Dip: Warm Cheddar Cup",
@@ -122,7 +135,7 @@ const Projects = [
     id: "rp_auto_dough",
     icon: "[⚖️]",
     title: "Precision Auto-Dough Silo",
-    desc: "Unlocks Auto-Buyer to restock dough automatically below 100 lbs.",
+    desc: "Unlocks Auto-Buyer to restock dough automatically.",
     cashCost: 400,
     rpCost: 10,
     trigger: () => GameState.unlockedMinigame && (GameState.doughPurchases >= 1 || GameState.handMadeDoughTotal >= 1),
@@ -173,6 +186,19 @@ const Projects = [
     }
   },
   {
+    id: "dough_pallet_2",
+    icon: "[🏗️]",
+    title: "Bulk Grain Hopper",
+    desc: "Increases Dough bought per order to 5,000 lbs.",
+    cashCost: 1200,
+    rpCost: 0,
+    trigger: () => GameState.completedProjects.includes("dough_pallet_1") && GameState.pretzels >= 1500,
+    effect: () => {
+      GameState.doughBatchSize = 5000;
+      logMessage("Upgraded: Dough orders now deliver 5,000 lbs per batch!");
+    }
+  },
+  {
     id: "dip_beer_cheese",
     icon: "[🍺]",
     title: "Dip: Sharp Beer Cheese",
@@ -196,6 +222,19 @@ const Projects = [
     effect: () => {
       unlockRecipe("bavarian");
       logMessage("New Recipe: Bavarian Pretzels unlocked!");
+    }
+  },
+  {
+    id: "triple_screw_extruder",
+    icon: "[🌀]",
+    title: "Triple-Screw Dough Press",
+    desc: "Triples (3x) Auto-Extruder output speed.",
+    cashCost: 2200,
+    rpCost: 0,
+    trigger: () => GameState.extruders >= 12,
+    effect: () => {
+      GameState.extruderSpeed *= 3;
+      logMessage("Upgraded: Triple-Screw Dough Presses running at 3x!");
     }
   },
   {
@@ -238,6 +277,32 @@ const Projects = [
     effect: () => {
       GameState.truckCapacity = Math.round(GameState.truckCapacity * 2.5);
       logMessage("Upgraded: Trucks keep pretzels fresh across county lines.");
+    }
+  },
+  {
+    id: "dough_pipeline",
+    icon: "[🏭]",
+    title: "Industrial Flour Pipeline",
+    desc: "Increases Dough bought per order to 20,000 lbs.",
+    cashCost: 6500,
+    rpCost: 0,
+    trigger: () => GameState.completedProjects.includes("dough_pallet_2") && GameState.pretzels >= 10000,
+    effect: () => {
+      GameState.doughBatchSize = 20000;
+      logMessage("Upgraded: Dough pipeline pumps 20,000 lbs per batch!");
+    }
+  },
+  {
+    id: "magma_kilns",
+    icon: "[🌋]",
+    title: "Hydraulic Magma Kilns",
+    desc: "Quadruples (4x) Auto-Extruder output speed.",
+    cashCost: 11000,
+    rpCost: 0,
+    trigger: () => GameState.extruders >= 16,
+    effect: () => {
+      GameState.extruderSpeed *= 4;
+      logMessage("Upgraded: Hydraulic Magma Kilns baking at 4x!");
     }
   },
   {
@@ -336,6 +401,19 @@ const Projects = [
     }
   },
   {
+    id: "rp_zero_point_extruder",
+    icon: "[⚛️]",
+    title: "Zero-Point Dough Reactor",
+    desc: "5x Auto-Extruder output speed to crush late-game demand.",
+    cashCost: 15000,
+    rpCost: 65,
+    trigger: () => GameState.unlockedMinigame && GameState.extruders >= 15,
+    effect: () => {
+      GameState.extruderSpeed *= 5;
+      logMessage("RP Breakthrough: Zero-Point Reactor running at 5x!");
+    }
+  },
+  {
     id: "rp_drone_thrusters",
     icon: "[☄️]",
     title: "Overclocked Drone Thrusters",
@@ -353,6 +431,7 @@ const Projects = [
 let pendingSales = 0;
 let crosshairPos = 10;
 let crosshairDir = 1;
+let lastAnimTime = null;
 let lastShotTime = 0;
 let controlsBound = false;
 
@@ -381,6 +460,42 @@ function onClick(id, handler) {
   if (el) el.addEventListener("click", handler);
 }
 
+// Allows holding down a button (mouse or touch) to repeat rapidly
+function bindHoldButton(id, actionFn) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+
+  let holdDelayTimer = null;
+  let repeatInterval = null;
+
+  const stopHold = () => {
+    clearTimeout(holdDelayTimer);
+    clearInterval(repeatInterval);
+    holdDelayTimer = null;
+    repeatInterval = null;
+  };
+
+  const startHold = (e) => {
+    if (e.type === "mousedown" && e.button !== 0) return;
+    stopHold();
+    actionFn();
+    holdDelayTimer = setTimeout(() => {
+      repeatInterval = setInterval(actionFn, 60);
+    }, 280);
+  };
+
+  btn.addEventListener("mousedown", startHold);
+  btn.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    startHold(e);
+  }, { passive: false });
+
+  btn.addEventListener("mouseup", stopHold);
+  btn.addEventListener("mouseleave", stopHold);
+  btn.addEventListener("touchend", stopHold);
+  btn.addEventListener("touchcancel", stopHold);
+}
+
 function logMessage(msg) {
   setText("console-log", `> ${msg}`);
 }
@@ -401,6 +516,7 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.funds)) GameState.funds = 0;
   if (!Number.isFinite(GameState.researchPoints)) GameState.researchPoints = 0;
   if (!Number.isFinite(GameState.dough)) GameState.dough = 200;
+  if (!Number.isFinite(GameState.doughBatchSize) || GameState.doughBatchSize < 500) GameState.doughBatchSize = 500;
   if (!Number.isFinite(GameState.doughCost) || GameState.doughCost <= 0) GameState.doughCost = 12.00;
   if (!Number.isFinite(GameState.doughPurchases)) GameState.doughPurchases = 0;
   if (!Number.isFinite(GameState.kneadClicks)) GameState.kneadClicks = 0;
@@ -461,7 +577,7 @@ function bakePretzels(requestedAmount) {
 window.handleManualBake = function() {
   if (typeof GameState === "undefined") return;
   if (GameState.dough < 1) {
-    logMessage("Out of dough! Hand-knead flour or buy a 500 lb bag.");
+    logMessage("Out of dough! Hand-knead flour or buy a fresh bag.");
     render();
     return;
   }
@@ -470,15 +586,16 @@ window.handleManualBake = function() {
 };
 
 function buyDoughBatch(isAuto = false) {
+  const batchSize = GameState.doughBatchSize || 500;
   if (GameState.funds >= GameState.doughCost) {
     GameState.funds -= GameState.doughCost;
-    GameState.dough += 500;
+    GameState.dough += batchSize;
     GameState.doughPurchases += 1;
     if (GameState.doughPurchases % 5 === 0) {
       GameState.doughCost = Math.round(GameState.doughCost * 1.15 * 100) / 100;
     }
     if (!isAuto) {
-      logMessage("Restocked +500 lbs of fresh dough.");
+      logMessage(`Restocked +${batchSize.toLocaleString()} lbs of fresh dough.`);
     }
     return true;
   }
@@ -724,13 +841,14 @@ function bindControls() {
     });
   }
 
-  onClick("btn-price-up", () => {
+  // Hold-to-repeat price buttons
+  bindHoldButton("btn-price-up", () => {
     GameState.price = Math.round((GameState.price + 0.05) * 100) / 100;
     updateDemand();
     render();
   });
 
-  onClick("btn-price-down", () => {
+  bindHoldButton("btn-price-down", () => {
     if (GameState.price > 0.05) {
       GameState.price = Math.round((GameState.price - 0.05) * 100) / 100;
       updateDemand();
@@ -848,6 +966,7 @@ function render() {
 
   const wholeInventory = Math.floor(GameState.inventory);
   const wholeDough = Math.floor(GameState.dough);
+  const batchSize = GameState.doughBatchSize || 500;
 
   setText("top-funds", formattedFunds);
   setText("pretzels-total", Math.floor(GameState.pretzels).toLocaleString());
@@ -882,6 +1001,7 @@ function render() {
   }
 
   setText("dough-amount", wholeDough.toLocaleString());
+  setText("dough-batch-size", batchSize.toLocaleString());
   setText("dough-cost", GameState.doughCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setDisabled("btn-buy-dough", !canAffordDough);
   setDisabled("btn-bake", GameState.dough < 1);
@@ -895,7 +1015,7 @@ function render() {
     } else if (GameState.dough < 1) {
       doughStatus.textContent = "OUT OF DOUGH & FUNDS! Use Emergency Maker.";
       doughStatus.style.color = "#ff6b5b";
-    } else if (GameState.dough < 50) {
+    } else if (GameState.dough < Math.max(50, batchSize * 0.2)) {
       doughStatus.textContent = "Low dough warning!";
       doughStatus.style.color = "#e89f48";
     } else {
@@ -949,9 +1069,16 @@ function render() {
   });
 }
 
-function animateCrosshair() {
+// Frame-rate independent crosshair sweep (identical speed on 60Hz, 144Hz, and 240Hz monitors)
+function animateCrosshair(timestamp) {
+  if (lastAnimTime === null) lastAnimTime = timestamp;
+  const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.1);
+  lastAnimTime = timestamp;
+
   if (GameState.started && GameState.unlockedMinigame) {
-    crosshairPos += crosshairDir * 1.45;
+    const speedPercentPerSec = 95; // Full sweep across track in ~0.9s regardless of monitor Hz
+    crosshairPos += crosshairDir * speedPercentPerSec * dt;
+
     if (crosshairPos >= 94) {
       crosshairPos = 94;
       crosshairDir = -1;
@@ -963,6 +1090,7 @@ function animateCrosshair() {
     const ch = document.getElementById("range-crosshair");
     if (ch) ch.style.left = `${crosshairPos}%`;
   }
+
   requestAnimationFrame(animateCrosshair);
 }
 
@@ -995,7 +1123,9 @@ function bootGame() {
   setInterval(() => {
     if (!GameState.started) return;
 
-    if (GameState.unlockedAutoDough && GameState.autoDoughEnabled && GameState.dough < 100) {
+    const batchSize = GameState.doughBatchSize || 500;
+    const autoThreshold = Math.max(100, batchSize * 0.25);
+    if (GameState.unlockedAutoDough && GameState.autoDoughEnabled && GameState.dough < autoThreshold) {
       buyDoughBatch(true);
     }
 

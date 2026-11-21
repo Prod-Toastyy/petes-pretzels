@@ -40,6 +40,7 @@ const DEFAULT_STATE = {
   researchPoints: 0,
 
   dough: 200,
+  doughBatchSize: 500,
   doughCost: 12.00,
   doughPurchases: 0,
   unlockedAutoDough: false,
@@ -120,6 +121,7 @@ const GameState = {
         }
       }
 
+      const batchSize = this.doughBatchSize || 500;
       const now = Date.now();
       const rawElapsed = Math.floor((now - (this.lastTick || now)) / 1000);
       const elapsedSeconds = Math.min(Math.max(0, rawElapsed), MAX_OFFLINE_SECONDS);
@@ -128,10 +130,10 @@ const GameState = {
       if (this.started && elapsedSeconds > 5) {
         const potentialBake = this.extruders * this.extruderSpeed * elapsedSeconds;
         if (this.unlockedAutoDough && this.autoDoughEnabled) {
-          const batchesNeeded = Math.ceil(Math.max(0, potentialBake - this.dough) / 500);
+          const batchesNeeded = Math.ceil(Math.max(0, potentialBake - this.dough) / batchSize);
           const affordableBatches = Math.min(batchesNeeded, Math.floor(this.funds / this.doughCost));
           this.funds -= affordableBatches * this.doughCost;
-          this.dough += affordableBatches * 500;
+          this.dough += affordableBatches * batchSize;
         }
 
         const produced = Math.min(this.dough, potentialBake);

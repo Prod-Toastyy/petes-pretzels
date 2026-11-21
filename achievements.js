@@ -82,6 +82,20 @@ const ACHIEVEMENTS_LIST = [
     title: "Pretzel Empire",
     desc: "Bake 25,000 total pretzels.",
     check: (s) => s.pretzels >= 25000
+  },
+  {
+    id: "pretzel_baron",
+    icon: "[👑]",
+    title: "Pretzel Baron",
+    desc: "Bake 100,000 total pretzels.",
+    check: (s) => s.pretzels >= 100000
+  },
+  {
+    id: "pretzel_singularity",
+    icon: "[🌌]",
+    title: "Pretzel Singularity",
+    desc: "Bake 1,000,000 total pretzels.",
+    check: (s) => s.pretzels >= 1000000
   }
 ];
 
