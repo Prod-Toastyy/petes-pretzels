@@ -76,6 +76,8 @@ const DEFAULT_STATE = {
   unlockedTrucks: false,
   unlockedDrones: false,
   unlockedMinigame: false,
+  unlockedPlinko: false,
+  goldenRushEndTime: 0,
   unlockedIncomeTicker: false,
   completedProjects: [],
   unlockedAchievements: []
@@ -93,11 +95,16 @@ const GameState = {
     return 1 + (this.trucks * this.truckCapacity) + (this.drones * this.droneCapacity);
   },
 
+  isGoldenRushActive() {
+    return Date.now() < (this.goldenRushEndTime || 0);
+  },
+
   getEffectivePrice() {
     const recipe = RECIPES[this.activeRecipe] || RECIPES.classic;
     const baseNet = (this.price * recipe.priceMult) + this.dipBonus;
     const achBonus = 1 + ((this.unlockedAchievements?.length || 0) * 0.01);
-    return Math.round(baseNet * achBonus * 100) / 100;
+    const rushMult = this.isGoldenRushActive() ? 2.0 : 1.0;
+    return Math.round(baseNet * achBonus * rushMult * 100) / 100;
   },
 
   save() {

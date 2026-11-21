@@ -598,3 +598,92 @@ button:disabled {
   border-color: #d97a43;
   color: #1e1916;
 }
+
+.sell-btn {
+  border-color: #7d4e38;
+  color: #f0c29e;
+}
+
+.sell-btn:hover:not(:disabled) {
+  background: #d97a43;
+  border-color: #d97a43;
+  color: #1e1916;
+}
+
+/* ASCII Plinko Pegboard */
+.plinko-board {
+  background: #171310;
+  border: 1px solid #4a3c34;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 6px 0;
+  font-size: 11.5px;
+  line-height: 1.15;
+  color: #f7d9b4;
+  text-align: center;
+  user-select: none;
+}
+
+/* 30s Golden Rush Outer Border Glow & Badge */
+body.golden-rush-active {
+  box-shadow: inset 0 0 28px rgba(255, 200, 65, 0.55);
+  outline: 3px solid #ffd166;
+  outline-offset: -3px;
+}
+
+.golden-rush-badge {
+  background: #382c12;
+  border: 1px solid #ffd166;
+  color: #ffe399;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.35);
+}
+
+/* Falling Clickable Golden Pretzels */
+.golden-sky-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1500;
+  overflow: hidden;
+}
+
+@keyframes fall-from-sky {
+  0% {
+    top: -40px;
+    transform: rotate(-15deg) scale(1);
+  }
+  50% {
+    transform: rotate(15deg) scale(1.1);
+  }
+  100% {
+    top: 105vh;
+    transform: rotate(-10deg) scale(1);
+  }
+}
+
+.falling-gold-pretzel {
+  position: fixed;
+  top: -40px;
+  width: auto;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 22px;
+  background: rgba(56, 44, 18, 0.92);
+  border: 2px solid #ffd166;
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(255, 209, 102, 0.8);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: fall-from-sky 4.5s linear forwards;
+}
+
+.falling-gold-pretzel:hover {
+  transform: scale(1.22);
+  background: #ffd166;
+}

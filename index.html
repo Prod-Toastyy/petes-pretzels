@@ -76,10 +76,16 @@
     </div>
   </div>
 
+  <!-- Falling Golden Pretzels Layer (Active during 30s Golden Rush) -->
+  <div id="golden-sky-layer" class="golden-sky-layer"></div>
+
   <!-- Top Bar -->
   <div class="top-bar">
     <div id="console-box">
       <div id="console-log">> Pete's Pretzels</div>
+    </div>
+    <div id="golden-rush-badge" class="golden-rush-badge hidden">
+      ★ GOLDEN RUSH: <strong id="golden-rush-timer">30</strong>s (2x Cash)
     </div>
     <div id="top-funds-badge" class="top-stat-badge">
       <span class="badge-label">Funds</span>
@@ -200,6 +206,14 @@
           </div>
           <button id="btn-shoot-target">Fire Test Shot [Space]</button>
           <p class="subtext" id="range-feedback">Hit center for +3 RP (Graze: +1 RP)</p>
+        </div>
+
+        <!-- ASCII Plinko Mini-Game Box -->
+        <div class="module-box hidden" id="panel-plinko">
+          <p><strong>[🎰] ASCII Pretzel Plinko</strong></p>
+          <pre id="plinko-board" class="plinko-board"></pre>
+          <button id="btn-drop-plinko">Drop Pretzel (15 Inv)</button>
+          <p class="subtext" id="plinko-feedback">[X] Burnt | [🌾] Dough | [★] 30s Rush</p>
         </div>
 
         <!-- Dynamic Research Cards -->
