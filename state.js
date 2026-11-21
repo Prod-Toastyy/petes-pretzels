@@ -44,7 +44,6 @@ const DEFAULT_STATE = {
   doughPurchases: 0,
   unlockedAutoDough: false,
   autoDoughEnabled: false,
-  ranOutOfDoughOnce: false,
   kneadClicks: 0,
   handMadeDoughTotal: 0,
 
@@ -76,7 +75,9 @@ const DEFAULT_STATE = {
   unlockedTrucks: false,
   unlockedDrones: false,
   unlockedMinigame: false,
-  completedProjects: []
+  unlockedIncomeTicker: false,
+  completedProjects: [],
+  unlockedAchievements: []
 };
 
 const GameState = {
@@ -93,7 +94,9 @@ const GameState = {
 
   getEffectivePrice() {
     const recipe = RECIPES[this.activeRecipe] || RECIPES.classic;
-    return Math.round(((this.price * recipe.priceMult) + this.dipBonus) * 100) / 100;
+    const baseNet = (this.price * recipe.priceMult) + this.dipBonus;
+    const achBonus = 1 + ((this.unlockedAchievements?.length || 0) * 0.01);
+    return Math.round(baseNet * achBonus * 100) / 100;
   },
 
   save() {
@@ -135,10 +138,6 @@ const GameState = {
         this.dough -= produced;
         this.pretzels += produced;
         this.inventory += produced;
-
-        if (this.dough <= 0 && potentialBake > 0) {
-          this.ranOutOfDoughOnce = true;
-        }
 
         const demandFactor = this.demand / 100;
         const maxSell = this.getMaxDeliveryRate() * demandFactor * elapsedSeconds;

@@ -1,3 +1,16 @@
+const FALLBACK_ASCII = [
+  "   .-'```'-.   \n  /  .---.  \\  \n |  (  X  )  | \n  \\  '---'  /  \n   '-.___.-'   ",
+  "   _.-'''-._   \n  / * .-. * \\  \n ( * (   ) * ) \n  \\ * '-' * /  \n   '-.....-'   ",
+  " .-----------. \n | PRETZELS  | \n | FOR  SALE | \n '-----------' \n   |       |   ",
+  "   .-'''''-.   \n  (         )  \n   |_______|   \n   |=======|   \n   '-------'   "
+];
+
+function getGallery() {
+  return (typeof AsciiGallery !== "undefined" && Array.isArray(AsciiGallery) && AsciiGallery.length > 0)
+    ? AsciiGallery
+    : FALLBACK_ASCII;
+}
+
 window.startGameFromModal = function() {
   const inputEl = document.getElementById("input-player-name");
   const nameInput = inputEl ? inputEl.value.trim() : "";
@@ -16,15 +29,12 @@ window.startGameFromModal = function() {
   const modal = document.getElementById("setup-modal");
   if (modal) modal.classList.add("hidden");
 
-  if (typeof applySessionUI === "function") applySessionUI();
-  if (typeof logMessage === "function") {
-    logMessage(`Welcome, ${nameInput || "Baker"}. Kitchen is open.`);
-  }
-  if (typeof render === "function") render();
+  applySessionUI();
+  logMessage(`Welcome, ${nameInput || "Baker"}. Kitchen is open.`);
+  render();
 };
 
 const Projects = [
-  // Early Production & Dough
   {
     id: "manual_gloves",
     icon: "[🧤]",
@@ -36,6 +46,20 @@ const Projects = [
     effect: () => {
       GameState.clickPower = 2;
       logMessage("Upgraded: Manual baking doubled.");
+    }
+  },
+  {
+    id: "income_ticker",
+    icon: "[📈]",
+    title: "Live Revenue Ticker",
+    desc: "Displays real-time cash earned per second under Unsold Inventory.",
+    cashCost: 40,
+    rpCost: 0,
+    trigger: () => GameState.pretzels >= 35,
+    effect: () => {
+      GameState.unlockedIncomeTicker = true;
+      showEl("income-rate-line");
+      logMessage("Upgraded: Live $/sec revenue ticker installed.");
     }
   },
   {
@@ -81,8 +105,6 @@ const Projects = [
       logMessage("R&D Test Range online! Shoot the target for RP.");
     }
   },
-
-  // Cheese Dips (Stackable +$ Per Pretzel)
   {
     id: "dip_cheddar",
     icon: "[🧀]",
@@ -103,7 +125,7 @@ const Projects = [
     desc: "Unlocks Auto-Buyer to restock dough automatically below 100 lbs.",
     cashCost: 400,
     rpCost: 10,
-    trigger: () => GameState.unlockedMinigame && (GameState.doughPurchases >= 1 || GameState.ranOutOfDoughOnce),
+    trigger: () => GameState.unlockedMinigame && (GameState.doughPurchases >= 1 || GameState.handMadeDoughTotal >= 1),
     effect: () => {
       GameState.unlockedAutoDough = true;
       GameState.autoDoughEnabled = true;
@@ -111,8 +133,6 @@ const Projects = [
       logMessage("Precision Auto-Dough Silo online!");
     }
   },
-
-  // Unlockable Pretzel Varieties
   {
     id: "recipe_cinnamon",
     icon: "[🍯]",
@@ -334,6 +354,7 @@ let pendingSales = 0;
 let crosshairPos = 10;
 let crosshairDir = 1;
 let lastShotTime = 0;
+let controlsBound = false;
 
 function setText(id, val) {
   const el = document.getElementById(id);
@@ -374,6 +395,7 @@ function formatDuration(totalSeconds) {
 }
 
 function sanitizeNumbers() {
+  if (typeof GameState === "undefined") return;
   if (!Number.isFinite(GameState.pretzels)) GameState.pretzels = 0;
   if (!Number.isFinite(GameState.inventory)) GameState.inventory = 0;
   if (!Number.isFinite(GameState.funds)) GameState.funds = 0;
@@ -391,6 +413,9 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.clickPower) || GameState.clickPower < 1) GameState.clickPower = 1;
   if (!Array.isArray(GameState.unlockedRecipes) || GameState.unlockedRecipes.length === 0) {
     GameState.unlockedRecipes = ["classic"];
+  }
+  if (!Array.isArray(GameState.unlockedAchievements)) {
+    GameState.unlockedAchievements = [];
   }
   const safeRecipes = typeof RECIPES !== "undefined" ? RECIPES : { classic: { id: "classic", name: "Classic Salted", priceMult: 1, demandMult: 1 } };
   if (!safeRecipes[GameState.activeRecipe]) GameState.activeRecipe = "classic";
@@ -417,35 +442,32 @@ function getEffectivePriceSafe() {
     return GameState.getEffectivePrice();
   }
   const r = getSafeRecipe();
-  return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * 100) / 100;
-}
-
-function triggerOutOfDoughCheck() {
-  if (GameState.dough <= 0) {
-    GameState.dough = 0;
-    if (!GameState.ranOutOfDoughOnce) {
-      GameState.ranOutOfDoughOnce = true;
-      showEl("panel-hand-dough");
-      logMessage("Out of dough! Emergency Hand-Kneader unlocked in Production.");
-    }
-  }
+  const achBonus = 1 + ((GameState.unlockedAchievements?.length || 0) * 0.01);
+  return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * 100) / 100;
 }
 
 function bakePretzels(requestedAmount) {
   if (GameState.dough <= 0) {
-    triggerOutOfDoughCheck();
+    GameState.dough = 0;
     return 0;
   }
   const actualBaked = Math.min(GameState.dough, requestedAmount);
   GameState.dough -= actualBaked;
   GameState.pretzels += actualBaked;
   GameState.inventory += actualBaked;
-
-  if (GameState.dough <= 0) {
-    triggerOutOfDoughCheck();
-  }
   return actualBaked;
 }
+
+window.handleManualBake = function() {
+  if (typeof GameState === "undefined") return;
+  if (GameState.dough < 1) {
+    logMessage("Out of dough! Hand-knead flour or buy a 500 lb bag.");
+    render();
+    return;
+  }
+  bakePretzels(GameState.clickPower || 1);
+  render();
+};
 
 function buyDoughBatch(isAuto = false) {
   if (GameState.funds >= GameState.doughCost) {
@@ -501,7 +523,7 @@ function updateDemand() {
 }
 
 function getEvolvedAscii() {
-  const gallery = typeof AsciiGallery !== "undefined" ? AsciiGallery : ["( X )"];
+  const gallery = getGallery();
   const base = gallery[GameState.selectedAsciiIndex] || gallery[0];
   const total = GameState.pretzels;
 
@@ -545,13 +567,13 @@ function shootTarget() {
 
 function initSetupPicker() {
   const grid = document.getElementById("ascii-picker-grid");
-  const nameInput = document.getElementById("input-player-name");
+  const gallery = getGallery();
 
-  if (grid && typeof AsciiGallery !== "undefined") {
+  if (grid) {
     grid.innerHTML = "";
-    AsciiGallery.forEach((art, index) => {
+    gallery.forEach((art, index) => {
       const card = document.createElement("div");
-      card.className = "ascii-option" + (index === 0 ? " selected" : "");
+      card.className = "ascii-option" + (index === (GameState.selectedAsciiIndex || 0) ? " selected" : "");
       const pre = document.createElement("pre");
       pre.textContent = art;
       card.appendChild(pre);
@@ -565,18 +587,6 @@ function initSetupPicker() {
       grid.appendChild(card);
     });
   }
-
-  setDisabled("btn-start-game", false);
-  onClick("btn-start-game", window.startGameFromModal);
-
-  if (nameInput) {
-    nameInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        window.startGameFromModal();
-      }
-    });
-  }
 }
 
 function applySessionUI() {
@@ -585,8 +595,11 @@ function applySessionUI() {
   hideEl("setup-modal");
 
   refreshRecipeDropdown();
+  if (typeof AchievementManager !== "undefined") {
+    AchievementManager.updateButtonCount();
+  }
 
-  if (GameState.ranOutOfDoughOnce) showEl("panel-hand-dough");
+  if (GameState.unlockedIncomeTicker) showEl("income-rate-line");
   if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
   if (GameState.unlockedAutomation) showEl("panel-automation");
   if (GameState.unlockedTrucks || GameState.unlockedDrones) showEl("system-delivery");
@@ -602,16 +615,10 @@ function applySessionUI() {
 }
 
 function bindControls() {
-  onClick("btn-bake", () => {
-    if (GameState.dough <= 0) {
-      triggerOutOfDoughCheck();
-      logMessage("Out of dough! Hand-knead flour or buy a 500 lb bag.");
-      render();
-      return;
-    }
-    bakePretzels(GameState.clickPower);
-    render();
-  });
+  if (controlsBound) return;
+  controlsBound = true;
+
+  onClick("btn-bake", window.handleManualBake);
 
   onClick("btn-buy-dough", () => {
     if (buyDoughBatch(false)) {
@@ -633,6 +640,64 @@ function bindControls() {
       GameState.handMadeDoughTotal += 1;
       logMessage("Hand-kneaded +1 lb of emergency dough!");
     }
+    render();
+  });
+
+  onClick("btn-open-achievements", () => {
+    if (typeof AchievementManager !== "undefined") {
+      AchievementManager.renderModal();
+    }
+    showEl("achievements-modal");
+  });
+
+  onClick("btn-close-achievements", () => {
+    hideEl("achievements-modal");
+  });
+
+  onClick("player-badge", () => {
+    showEl("restart-modal");
+  });
+
+  onClick("btn-close-restart", () => {
+    hideEl("restart-modal");
+  });
+
+  onClick("btn-cancel-restart", () => {
+    hideEl("restart-modal");
+  });
+
+  onClick("btn-confirm-restart", () => {
+    if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
+      GameState.reset();
+    }
+    pendingSales = 0;
+
+    hideEl("restart-modal");
+    hideEl("income-rate-line");
+    hideEl("recipe-box");
+    hideEl("btn-toggle-autodough");
+    hideEl("panel-hand-dough");
+    hideEl("panel-automation");
+    hideEl("system-delivery");
+    hideEl("panel-trucks");
+    hideEl("panel-drones");
+    hideEl("panel-projects");
+    hideEl("rp-badge");
+    hideEl("panel-minigame");
+
+    const projectsList = document.getElementById("projects-list");
+    if (projectsList) projectsList.innerHTML = "";
+
+    const nameInput = document.getElementById("input-player-name");
+    if (nameInput) nameInput.value = "";
+
+    if (typeof AchievementManager !== "undefined") {
+      AchievementManager.queue = [];
+      AchievementManager.updateButtonCount();
+    }
+
+    initSetupPicker();
+    showEl("setup-modal");
     render();
   });
 
@@ -781,27 +846,55 @@ function render() {
   const netPrice = getEffectivePriceSafe();
   const formattedFunds = GameState.funds.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const wholeInventory = Math.floor(GameState.inventory);
+  const wholeDough = Math.floor(GameState.dough);
+
   setText("top-funds", formattedFunds);
   setText("pretzels-total", Math.floor(GameState.pretzels).toLocaleString());
-  setText("inventory", Math.floor(GameState.inventory).toLocaleString());
+  setText("inventory", wholeInventory.toLocaleString());
   setText("rp-total", Math.floor(GameState.researchPoints).toLocaleString());
   setText("price", GameState.price.toFixed(2));
   setText("effective-price", netPrice.toFixed(2));
   setText("demand", GameState.demand);
   setText("click-power", GameState.clickPower);
 
-  // Dough & Hand-Kneader UI
-  setText("dough-amount", Math.floor(GameState.dough).toLocaleString());
+  const invEl = document.getElementById("inventory");
+  if (invEl) invEl.classList.toggle("zero-danger", wholeInventory <= 0);
+
+  const doughEl = document.getElementById("dough-amount");
+  if (doughEl) doughEl.classList.toggle("zero-danger", wholeDough <= 0);
+
+  if (GameState.unlockedIncomeTicker) {
+    showEl("income-rate-line");
+    const sustainableSalesPerSec = wholeInventory > 0
+      ? effectiveDelivery
+      : Math.min(bakeRate, effectiveDelivery);
+    const cashPerSec = sustainableSalesPerSec * netPrice;
+    setText("income-per-sec", cashPerSec.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  }
+
+  const canAffordDough = GameState.funds >= GameState.doughCost;
+  const isOutAndBroke = GameState.dough < 1 && !canAffordDough;
+  if (isOutAndBroke) {
+    showEl("panel-hand-dough");
+  } else {
+    hideEl("panel-hand-dough");
+  }
+
+  setText("dough-amount", wholeDough.toLocaleString());
   setText("dough-cost", GameState.doughCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  setDisabled("btn-buy-dough", GameState.funds < GameState.doughCost);
+  setDisabled("btn-buy-dough", !canAffordDough);
   setDisabled("btn-bake", GameState.dough < 1);
   setText("knead-progress", GameState.kneadClicks);
 
   const doughStatus = document.getElementById("dough-status");
   if (doughStatus) {
-    if (GameState.dough <= 0) {
-      doughStatus.textContent = "OUT OF DOUGH! Restock or hand-knead.";
-      doughStatus.style.color = "#e86848";
+    if (GameState.dough < 1 && canAffordDough) {
+      doughStatus.textContent = "Out of dough! Click Buy above to restock.";
+      doughStatus.style.color = "#e89f48";
+    } else if (GameState.dough < 1) {
+      doughStatus.textContent = "OUT OF DOUGH & FUNDS! Use Emergency Maker.";
+      doughStatus.style.color = "#ff6b5b";
     } else if (GameState.dough < 50) {
       doughStatus.textContent = "Low dough warning!";
       doughStatus.style.color = "#e89f48";
@@ -816,7 +909,6 @@ function render() {
     autoBtn.textContent = `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`;
   }
 
-  // Marketing / Promotion UI
   setText("promo-level", GameState.promoLevel);
   setText("promo-cost", GameState.promoCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setText("promo-bonus", `+${(GameState.promoLevel - 1) * 20}%`);
@@ -875,6 +967,11 @@ function animateCrosshair() {
 }
 
 function bootGame() {
+  if (typeof GameState === "undefined") {
+    logMessage("Error: state.js did not load. Check file folder.");
+    return;
+  }
+
   const offlineSeconds = GameState.load();
   sanitizeNumbers();
   updateDemand();
@@ -927,6 +1024,9 @@ function bootGame() {
     }
 
     checkUnlocks();
+    if (typeof AchievementManager !== "undefined") {
+      AchievementManager.checkAll();
+    }
     render();
   }, 100);
 

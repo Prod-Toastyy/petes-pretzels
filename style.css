@@ -33,7 +33,7 @@ p {
   display: flex;
   justify-content: space-between;
   align-items: stretch;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
@@ -53,12 +53,12 @@ p {
   background: #1f2922;
   border: 1px solid #4fa86e;
   border-radius: 10px;
-  padding: 8px 16px;
+  padding: 6px 14px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: flex-end;
-  min-width: 135px;
+  min-width: 130px;
 }
 
 .badge-label {
@@ -69,20 +69,49 @@ p {
 }
 
 .badge-value {
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 600;
   color: #b8f5cb;
 }
 
-#player-badge {
+.top-ach-btn {
+  width: auto;
+  margin: 0;
+  background: #2b241c;
+  border: 1px solid #a8874f;
+  color: #f7d996;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-ach-btn:hover:not(:disabled) {
+  background: #e8b448;
+  color: #1e1916;
+  border-color: #e8b448;
+}
+
+.player-badge-btn {
+  width: auto;
+  margin: 0;
   background: #29221e;
   border: 1px solid #6b5344;
   border-radius: 10px;
-  padding: 8px 16px;
+  padding: 8px 14px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-width: 120px;
+  justify-content: center;
+  min-width: 110px;
+  cursor: pointer;
+}
+
+.player-badge-btn:hover:not(:disabled) {
+  background: #362c26;
+  border-color: #e89f48;
 }
 
 #display-player-name {
@@ -189,7 +218,7 @@ header h1 {
   border: 1px solid #3e332c;
   border-radius: 8px;
   padding: 10px 12px;
-  min-width: 195px;
+  min-width: 190px;
   flex: 1;
 }
 
@@ -222,6 +251,26 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.close-small-btn {
+  width: auto;
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.danger-btn {
+  background: #5c2622;
+  border-color: #a84f4f;
+  color: #ffd6d1;
+  font-weight: 600;
+}
+
+.danger-btn:hover:not(:disabled) {
+  background: #d94b43;
+  border-color: #ff6b5b;
+  color: #1e1916;
+}
+
 .btn-row {
   display: flex;
   gap: 8px;
@@ -232,6 +281,28 @@ button:disabled {
   font-size: 11.5px;
   color: #b59f8d;
   margin-top: 2px;
+}
+
+.big-stat-line {
+  font-size: 13.5px;
+  margin: 5px 0;
+}
+
+.big-stat-num {
+  font-size: 17px;
+  font-weight: 700;
+  color: #f7d9b4;
+  transition: color 0.15s ease;
+}
+
+.big-stat-num.zero-danger {
+  color: #ff6b5b;
+}
+
+.income-rate-line {
+  font-size: 12.5px;
+  color: #8ce3a8;
+  margin: 2px 0 4px 0;
 }
 
 .recipe-row {
@@ -329,6 +400,99 @@ button:disabled {
   border-color: #352b25;
 }
 
+/* Achievements Grid & Bottom-Center Toast */
+.ach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.ach-card {
+  background: #1e1815;
+  border: 1px solid #3e332c;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ach-card.unlocked {
+  border-color: #c9973e;
+  background: #2b2319;
+}
+
+.ach-card.locked {
+  opacity: 0.5;
+}
+
+.ach-card-title {
+  font-size: 13px;
+  color: #f7d996;
+  margin-bottom: 4px;
+}
+
+.ach-toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #2b2218;
+  border: 2px solid #e8b448;
+  border-radius: 12px;
+  padding: 12px 24px;
+  text-align: center;
+  z-index: 2000;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.ach-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ach-toast-kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #e8b448;
+  font-weight: 600;
+}
+
+.ach-toast-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff2d6;
+  margin: 2px 0;
+}
+
+.ach-toast-desc {
+  font-size: 12px;
+  color: #d4c0a8;
+}
+
+@keyframes spark-burst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.4);
+  }
+}
+
+.ach-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  color: #ffd166;
+  font-size: 14px;
+  pointer-events: none;
+  animation: spark-burst 0.8s ease-out forwards;
+}
+
 /* Setup Modal & Selectable 12-Art Grid */
 .modal-overlay {
   position: fixed;
@@ -350,6 +514,10 @@ button:disabled {
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.small-modal {
+  max-width: 440px;
 }
 
 .modal-card label {

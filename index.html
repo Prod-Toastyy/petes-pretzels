@@ -6,7 +6,7 @@
   <title>Pete's Pretzels</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Lora:wght@600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,11 +15,64 @@
   <div id="setup-modal" class="modal-overlay">
     <div class="modal-card">
       <label for="input-player-name">Name</label>
-      <input type="text" id="input-player-name" maxlength="28" autocomplete="off">
+      <input type="text" id="input-player-name" maxlength="28" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();window.forceStartGame();}">
 
       <div id="ascii-picker-grid" class="ascii-grid"></div>
 
-      <button type="button" id="btn-start-game" class="primary-btn" onclick="if(window.startGameFromModal) window.startGameFromModal()">Start</button>
+      <button type="button" id="btn-start-game" class="primary-btn" onclick="window.forceStartGame()">Start</button>
+    </div>
+  </div>
+
+  <!-- Inline Failsafe Starter -->
+  <script>
+    window.forceStartGame = function() {
+      var input = document.getElementById("input-player-name");
+      var playerName = (input && input.value.trim()) ? input.value.trim() : "Baker";
+
+      if (typeof window.startGameFromModal === "function") {
+        window.startGameFromModal();
+        return;
+      }
+
+      if (typeof GameState !== "undefined") {
+        GameState.playerName = playerName;
+        GameState.started = true;
+        if (typeof GameState.save === "function") GameState.save();
+      }
+
+      var badge = document.getElementById("display-player-name");
+      if (badge) badge.textContent = playerName;
+
+      var modal = document.getElementById("setup-modal");
+      if (modal) modal.classList.add("hidden");
+    };
+  </script>
+
+  <!-- Achievements Modal -->
+  <div id="achievements-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="row-header">
+        <h2>[🏆] Achievements (<span id="ach-bonus-pct">+0%</span> Income Bonus)</h2>
+        <button type="button" id="btn-close-achievements" class="close-small-btn">Close</button>
+      </div>
+      <div id="achievements-grid" class="ach-grid"></div>
+    </div>
+  </div>
+
+  <!-- Bakery Menu / Restart Modal -->
+  <div id="restart-modal" class="modal-overlay hidden">
+    <div class="modal-card small-modal">
+      <div class="row-header">
+        <h2>[⚙️] Bakery Options</h2>
+        <button type="button" id="btn-close-restart" class="close-small-btn">Close</button>
+      </div>
+      <p class="subtext" style="margin-bottom: 14px;">
+        Restarting will erase your current pretzels, funds, upgrades, and achievements and return to the bakery setup screen.
+      </p>
+      <div class="btn-row">
+        <button type="button" id="btn-cancel-restart">Keep Baking</button>
+        <button type="button" id="btn-confirm-restart" class="danger-btn">Restart Game</button>
+      </div>
     </div>
   </div>
 
@@ -32,9 +85,12 @@
       <span class="badge-label">Funds</span>
       <span class="badge-value">$<span id="top-funds">0.00</span></span>
     </div>
-    <div id="player-badge">
+    <button type="button" id="btn-open-achievements" class="top-ach-btn">
+      [🏆] <span id="ach-count">0</span>/<span id="ach-total">12</span>
+    </button>
+    <button type="button" id="player-badge" class="player-badge-btn" title="Bakery Options">
       <span id="display-player-name"></span>
-    </div>
+    </button>
   </div>
 
   <!-- Header & Selected ASCII -->
@@ -51,12 +107,13 @@
     
     <!-- Row 1: Production -->
     <section class="row-panel" id="row-production">
-      <h2>[♨] Production</h2>
+      <h2>[🔥] Production</h2>
       <div class="row-items">
         
         <div class="module-box">
           <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
-          <p>Unsold Inventory: <span id="inventory">0</span></p>
+          <p class="big-stat-line">Unsold Inventory: <strong id="inventory" class="big-stat-num">0</strong></p>
+          <p id="income-rate-line" class="income-rate-line hidden">Revenue: <strong>$<span id="income-per-sec">0.00</span>/sec</strong></p>
           <div id="recipe-box" class="recipe-row hidden">
             <label for="select-recipe" class="subtext">Menu:</label>
             <select id="select-recipe"></select>
@@ -64,13 +121,13 @@
         </div>
 
         <div class="module-box">
-          <p>[🌾] Dough Supply: <strong id="dough-amount">200</strong> lbs</p>
+          <p class="big-stat-line">[🌾] Dough: <strong id="dough-amount" class="big-stat-num">200</strong> <span class="subtext">lbs</span></p>
           <button id="btn-buy-dough">Buy 500 lbs Dough ($<span id="dough-cost">12.00</span>)</button>
           <button id="btn-toggle-autodough" class="hidden">Auto-Buyer: OFF</button>
           <p class="subtext" id="dough-status">1 lb dough = 1 pretzel</p>
         </div>
 
-        <!-- Emergency Hand-Kneader (Appears once you run out of dough) -->
+        <!-- Emergency Hand-Kneader (Appears only when out of dough AND broke) -->
         <div class="module-box hidden" id="panel-hand-dough">
           <p>[👐] <strong>Emergency Dough Maker</strong></p>
           <button id="btn-knead-dough">Hand-Knead Flour (<span id="knead-progress">0</span>/30)</button>
@@ -145,8 +202,16 @@
 
   </main>
 
+  <!-- Bottom-Center Achievement Pop-Up Toast -->
+  <div id="achievement-toast" class="ach-toast hidden">
+    <div class="ach-toast-kicker">ACHIEVEMENT UNLOCKED</div>
+    <div id="ach-toast-title" class="ach-toast-title"></div>
+    <div id="ach-toast-desc" class="ach-toast-desc"></div>
+  </div>
+
   <script src="ascii.js"></script>
   <script src="state.js"></script>
+  <script src="achievements.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
