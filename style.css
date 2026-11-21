@@ -587,3 +587,14 @@ button:disabled {
   padding: 12px;
   font-size: 15px;
 }
+
+.sell-btn {
+  border-color: #7d4e38;
+  color: #f0c29e;
+}
+
+.sell-btn:hover:not(:disabled) {
+  background: #d97a43;
+  border-color: #d97a43;
+  color: #1e1916;
+}

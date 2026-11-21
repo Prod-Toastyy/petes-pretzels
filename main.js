@@ -460,7 +460,6 @@ function onClick(id, handler) {
   if (el) el.addEventListener("click", handler);
 }
 
-// Allows holding down a button (mouse or touch) to repeat rapidly
 function bindHoldButton(id, actionFn) {
   const btn = document.getElementById(id);
   if (!btn) return;
@@ -560,6 +559,18 @@ function getEffectivePriceSafe() {
   const r = getSafeRecipe();
   const achBonus = 1 + ((GameState.unlockedAchievements?.length || 0) * 0.01);
   return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * 100) / 100;
+}
+
+function getTruckSellValue() {
+  if (GameState.trucks <= 0) return 0;
+  const prevBuyCost = GameState.truckCost / 1.48;
+  return Math.round(prevBuyCost * 0.60 * 100) / 100;
+}
+
+function getDroneSellValue() {
+  if (GameState.drones <= 0) return 0;
+  const prevBuyCost = GameState.droneCost / 1.55;
+  return Math.round(prevBuyCost * 0.60 * 100) / 100;
 }
 
 function bakePretzels(requestedAmount) {
@@ -841,7 +852,6 @@ function bindControls() {
     });
   }
 
-  // Hold-to-repeat price buttons
   bindHoldButton("btn-price-up", () => {
     GameState.price = Math.round((GameState.price + 0.05) * 100) / 100;
     updateDemand();
@@ -876,11 +886,39 @@ function bindControls() {
     }
   });
 
+  onClick("btn-sell-truck", () => {
+    if (GameState.trucks > 0) {
+      const refund = getTruckSellValue();
+      GameState.trucks -= 1;
+      GameState.funds += refund;
+      GameState.truckCost = GameState.trucks === 0
+        ? 250.00
+        : Math.round((GameState.truckCost / 1.48) * 100) / 100;
+      logMessage(`Sold 1 Delivery Truck for +$${refund.toFixed(2)}.`);
+      GameState.save();
+      render();
+    }
+  });
+
   onClick("btn-buy-drone", () => {
     if (GameState.funds >= GameState.droneCost) {
       GameState.funds -= GameState.droneCost;
       GameState.drones += 1;
       GameState.droneCost = Math.round(GameState.droneCost * 1.55 * 100) / 100;
+      GameState.save();
+      render();
+    }
+  });
+
+  onClick("btn-sell-drone", () => {
+    if (GameState.drones > 0) {
+      const refund = getDroneSellValue();
+      GameState.drones -= 1;
+      GameState.funds += refund;
+      GameState.droneCost = GameState.drones === 0
+        ? 5000.00
+        : Math.round((GameState.droneCost / 1.55) * 100) / 100;
+      logMessage(`Sold 1 Pretzel Drone for +$${refund.toFixed(2)}.`);
       GameState.save();
       render();
     }
@@ -1042,15 +1080,23 @@ function render() {
   setText("extruder-rate", GameState.extruderSpeed);
   setDisabled("btn-buy-extruder", GameState.funds < GameState.extruderCost);
 
+  // Delivery Trucks (Buy & Sell)
+  const truckSellVal = getTruckSellValue();
   setText("truck-count", GameState.trucks);
   setText("truck-cost", GameState.truckCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  setText("truck-sell-val", truckSellVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setText("truck-rate", GameState.truckCapacity);
   setDisabled("btn-buy-truck", GameState.funds < GameState.truckCost);
+  setDisabled("btn-sell-truck", GameState.trucks <= 0);
 
+  // Pretzel Drones (Buy & Sell)
+  const droneSellVal = getDroneSellValue();
   setText("drone-count", GameState.drones);
   setText("drone-cost", GameState.droneCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  setText("drone-sell-val", droneSellVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setText("drone-rate", GameState.droneCapacity);
   setDisabled("btn-buy-drone", GameState.funds < GameState.droneCost);
+  setDisabled("btn-sell-drone", GameState.drones <= 0);
 
   const asciiEl = document.getElementById("ascii-stage");
   if (asciiEl) {
@@ -1069,14 +1115,13 @@ function render() {
   });
 }
 
-// Frame-rate independent crosshair sweep (identical speed on 60Hz, 144Hz, and 240Hz monitors)
 function animateCrosshair(timestamp) {
   if (lastAnimTime === null) lastAnimTime = timestamp;
   const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.1);
   lastAnimTime = timestamp;
 
   if (GameState.started && GameState.unlockedMinigame) {
-    const speedPercentPerSec = 95; // Full sweep across track in ~0.9s regardless of monitor Hz
+    const speedPercentPerSec = 95;
     crosshairPos += crosshairDir * speedPercentPerSec * dt;
 
     if (crosshairPos >= 94) {

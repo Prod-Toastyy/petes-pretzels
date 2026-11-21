@@ -163,13 +163,21 @@
       <div class="row-items">
         
         <div class="module-box hidden" id="panel-trucks">
-          <button id="btn-buy-truck">[🚚] Delivery Truck (<span id="truck-count">0</span>)</button>
-          <p class="subtext">Cost: $<span id="truck-cost">250.00</span> | Delivers <span id="truck-rate">8</span>/sec each</p>
+          <p><strong>[🚚] Delivery Trucks: <span id="truck-count">0</span></strong></p>
+          <div class="btn-row">
+            <button id="btn-buy-truck">Buy ($<span id="truck-cost">250.00</span>)</button>
+            <button id="btn-sell-truck" class="sell-btn" disabled>Sell (+$<span id="truck-sell-val">0.00</span>)</button>
+          </div>
+          <p class="subtext">Delivers <span id="truck-rate">8</span> pretzels/sec each</p>
         </div>
 
         <div class="module-box hidden" id="panel-drones">
-          <button id="btn-buy-drone">[🛸] Pretzel Drone (<span id="drone-count">0</span>)</button>
-          <p class="subtext">Cost: $<span id="drone-cost">5000.00</span> | Delivers <span id="drone-rate">75</span>/sec each</p>
+          <p><strong>[🛸] Pretzel Drones: <span id="drone-count">0</span></strong></p>
+          <div class="btn-row">
+            <button id="btn-buy-drone">Buy ($<span id="drone-cost">5000.00</span>)</button>
+            <button id="btn-sell-drone" class="sell-btn" disabled>Sell (+$<span id="drone-sell-val">0.00</span>)</button>
+          </div>
+          <p class="subtext">Delivers <span id="drone-rate">75</span> pretzels/sec each</p>
         </div>
 
       </div>
