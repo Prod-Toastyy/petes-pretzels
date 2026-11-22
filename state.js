@@ -99,6 +99,9 @@ const DEFAULT_STATE = {
   funds: 0.0,
   researchPoints: 0,
   rangeTargetCount: 1,
+  unlockedRangeShooters: false,
+  rangeShooters: 0,
+  rangeShooterCost: 2500.00,
 
   dough: 200,
   doughBatchSize: 500,
@@ -303,6 +306,7 @@ const GameState = {
     this.saltMineCost = Math.round(2500.00 * scale * 100) / 100;
     this.wheatFarmCost = Math.round(4000.00 * scale * 100) / 100;
     this.refineryCost = Math.round(8500.00 * scale * 100) / 100;
+    this.rangeShooterCost = Math.round(2500.00 * scale * 100) / 100;
 
     this.save(true);
     return { earnedGold, conqueringFinalWorld };

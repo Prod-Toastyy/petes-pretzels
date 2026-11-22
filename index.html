@@ -34,7 +34,7 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA.8 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
+    <div class="intro-bottom-version">BETA 8.2 • EARTH CONQUEST EDITION</div>
   </div>
 
   <!-- Start Setup -->
@@ -524,6 +524,13 @@
             <div id="range-crosshair" class="range-crosshair">+</div>
           </div>
           <button id="btn-shoot-target">Fire Test Shot [Space]</button>
+          <div id="range-shooter-controls" class="hidden" style="margin-top: 4px; display: flex; flex-direction: column; gap: 6px;">
+            <p class="subtext">Auto-Shooters: <strong id="range-shooter-count">0</strong> (Every <strong id="range-shooter-interval">1.50</strong>s)</p>
+            <div class="btn-row">
+              <button id="btn-buy-shooter">Buy Shooter ($<span id="range-shooter-cost">2,500.00</span>)</button>
+              <button id="btn-sell-shooter" class="sell-btn" disabled>Sell (+$<span id="range-shooter-sell-val">0.00</span>)</button>
+            </div>
+          </div>
           <p class="subtext" id="range-feedback">Hit center for +3 RP (Graze: +1 RP)</p>
         </div>
 

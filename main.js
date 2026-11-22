@@ -591,6 +591,20 @@ const Projects = [
     }
   },
   {
+    id: "unlock_range_shooters",
+    icon: "[🤖]",
+    title: "Automated Range Turrets",
+    desc: "Allows buying & selling auto-shooters on the Ballistic Range that fire every ~1–2s for RP.",
+    cashCost: 1800,
+    rpCost: 12,
+    trigger: () => GameState.unlockedMinigame,
+    effect: () => {
+      GameState.unlockedRangeShooters = true;
+      showEl("range-shooter-controls");
+      logMessage("Automated Range Turrets unlocked! Buy/sell shooters inside Ballistic Dough Tester.");
+    }
+  },
+  {
     id: "range_targets_2",
     icon: "[◎]",
     title: "Dual Moving Range Targets",
@@ -1324,6 +1338,7 @@ let manualBakeHistory = [];
 let crosshairPos = 10;
 let crosshairDir = 1;
 let rangeAnimClock = 0;
+let autoShooterTimer = 0;
 let lastAnimTime = null;
 let lastShotTime = 0;
 let controlsBound = false;
@@ -1441,6 +1456,9 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.researchPoints)) GameState.researchPoints = 0;
   if (!Number.isFinite(GameState.rangeTargetCount) || GameState.rangeTargetCount < 1) GameState.rangeTargetCount = 1;
   if (GameState.rangeTargetCount > 5) GameState.rangeTargetCount = 5;
+  if (typeof GameState.unlockedRangeShooters !== "boolean") GameState.unlockedRangeShooters = false;
+  if (!Number.isFinite(GameState.rangeShooters) || GameState.rangeShooters < 0) GameState.rangeShooters = 0;
+  if (!Number.isFinite(GameState.rangeShooterCost) || GameState.rangeShooterCost <= 0) GameState.rangeShooterCost = 2500.00;
   if (!Number.isFinite(GameState.dough)) GameState.dough = 200;
   if (!Number.isFinite(GameState.doughBatchSize) || GameState.doughBatchSize < 500) GameState.doughBatchSize = 500;
   if (!Number.isFinite(GameState.doughCost) || GameState.doughCost <= 0) GameState.doughCost = 12.00;
@@ -1504,6 +1522,45 @@ function getEffectivePriceSafe() {
   const goldBonus = 1 + ((GameState.goldenPretzels || 0) * 0.25);
   const rushMult = Date.now() < (GameState.goldenRushEndTime || 0) ? 2.0 : 1.0;
   return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * goldBonus * rushMult * 100) / 100;
+}
+
+function getRangeShooterIntervalSec() {
+  const count = Math.max(1, GameState.rangeShooters || 0);
+  // 1 shooter = 1.60s; scales down smoothly toward 0.35s as you add more shooters
+  return Math.max(0.35, 1.60 / (1 + ((count - 1) * 0.22)));
+}
+
+function getRangeShooterSellValue() {
+  if ((GameState.rangeShooters || 0) <= 0) return 0;
+  const prevBuyCost = GameState.rangeShooterCost / 1.48;
+  return Math.round(prevBuyCost * 0.60 * 100) / 100;
+}
+
+function buyRangeShooterStep() {
+  if (GameState.funds < GameState.rangeShooterCost) return false;
+  GameState.funds -= GameState.rangeShooterCost;
+  GameState.rangeShooters = (GameState.rangeShooters || 0) + 1;
+  GameState.rangeShooterCost = Math.round(GameState.rangeShooterCost * 1.48 * 100) / 100;
+  logMessage(`Purchased Range Shooter #${GameState.rangeShooters} (fires every ${getRangeShooterIntervalSec().toFixed(2)}s)!`);
+  render();
+  return true;
+}
+
+function triggerAutoShooterShot() {
+  const count = GameState.rangeShooters || 0;
+  if (count <= 0 || !GameState.started || !GameState.unlockedMinigame) return;
+
+  const targets = getActiveRangeTargets();
+  let hitBonus = 1;
+  targets.forEach(targetPos => {
+    const dist = Math.abs(crosshairPos - targetPos);
+    if (dist <= 5.5) hitBonus = Math.max(hitBonus, 3);
+    else if (dist <= 12) hitBonus = Math.max(hitBonus, 2);
+  });
+
+  const gainedRP = count * hitBonus;
+  GameState.researchPoints += gainedRP;
+  setText("range-feedback", `Auto-Shooter volley: +${gainedRP} RP (${count} shooter${count === 1 ? "" : "s"})`);
 }
 
 function isSupplyChainActivelyRunning() {
@@ -2033,6 +2090,7 @@ function resetRegionalPanelsUI() {
   cashFlowHistory = [];
   liveCashPerSec = 0;
   manualBakeHistory = [];
+  autoShooterTimer = 0;
   plinkoBall = null;
   lastPlinkoSignature.value = "";
   lastTextCache.clear();
@@ -2052,6 +2110,7 @@ function resetRegionalPanelsUI() {
   hideEl("panel-projects");
   hideEl("rp-badge");
   hideEl("panel-minigame");
+  hideEl("range-shooter-controls");
   hideEl("panel-plinko");
 
   const projectsList = getEl("projects-list");
@@ -2090,6 +2149,7 @@ function applySessionUI() {
     showEl("panel-minigame");
     updateRangeTargetsUI();
   }
+  if (GameState.unlockedRangeShooters) showEl("range-shooter-controls");
   if (GameState.unlockedPlinko) {
     showEl("panel-plinko");
     renderPlinkoBoard(true);
@@ -2403,7 +2463,7 @@ function bindControls() {
   }
 
   bindHoldButton("btn-price-up", (heldSecs) => {
-    const step = getExponentialPriceStep(heldSecs, GameState.price);
+    const step = getExponentialPriceStep(heldSecs);
     GameState.price = Math.round((GameState.price + step) * 100) / 100;
     updateDemand();
     render();
@@ -2414,7 +2474,7 @@ function bindControls() {
 
   bindHoldButton("btn-price-down", (heldSecs) => {
     if (GameState.price > 0.05) {
-      const step = getExponentialPriceStep(heldSecs, GameState.price);
+      const step = getExponentialPriceStep(heldSecs);
       GameState.price = Math.max(0.05, Math.round((GameState.price - step) * 100) / 100);
       updateDemand();
       render();
@@ -2479,6 +2539,30 @@ function bindControls() {
   });
 
   onClick("btn-shoot-target", shootTarget);
+
+  bindHoldButton("btn-buy-shooter", () => {
+    buyRangeShooterStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 55,
+    onRelease: () => GameState.save(true)
+  });
+
+  onClick("btn-sell-shooter", () => {
+    if ((GameState.rangeShooters || 0) > 0) {
+      const refund = getRangeShooterSellValue();
+      GameState.rangeShooters -= 1;
+      GameState.funds += refund;
+      const baseCost = Math.round(2500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
+      GameState.rangeShooterCost = GameState.rangeShooters === 0
+        ? baseCost
+        : Math.round((GameState.rangeShooterCost / 1.48) * 100) / 100;
+      logMessage(`Sold 1 Range Shooter for +$${refund.toFixed(2)}.`);
+      GameState.save(true);
+      render();
+    }
+  });
+
   onClick("btn-drop-plinko", dropPlinkoPretzel);
 
   window.addEventListener("keydown", (e) => {
@@ -2597,6 +2681,16 @@ function render() {
 
   if (GameState.unlockedMinigame) {
     updateRangeTargetsUI();
+  }
+  if (GameState.unlockedRangeShooters) {
+    showEl("range-shooter-controls");
+    const shooterCount = GameState.rangeShooters || 0;
+    setText("range-shooter-count", shooterCount);
+    setText("range-shooter-interval", getRangeShooterIntervalSec().toFixed(2));
+    setText("range-shooter-cost", GameState.rangeShooterCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setText("range-shooter-sell-val", getRangeShooterSellValue().toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setDisabled("btn-buy-shooter", GameState.funds < GameState.rangeShooterCost);
+    setDisabled("btn-sell-shooter", shooterCount <= 0);
   }
 
   const bakeRate = getEffectiveBakeRate();
@@ -2812,6 +2906,17 @@ function animateMinigames(timestamp) {
         ch.style.transform = "translate(-50%, -50%)";
       }
       updateRangeTargetsUI();
+
+      if (GameState.unlockedRangeShooters && (GameState.rangeShooters || 0) > 0) {
+        autoShooterTimer += dt;
+        const shotInterval = getRangeShooterIntervalSec();
+        if (autoShooterTimer >= shotInterval) {
+          autoShooterTimer %= shotInterval;
+          triggerAutoShooterShot();
+        }
+      } else {
+        autoShooterTimer = 0;
+      }
     }
 
     if (GameState.unlockedPlinko) {
@@ -2832,11 +2937,10 @@ function animateMinigames(timestamp) {
           plinkoStepTimer = 0;
           plinkoBall.row += 1;
 
+          // Balanced center bias so [★] and [🌾] aren't pushed away from the middle
           let leftChance = 0.5;
-          if (plinkoBall.col >= 7 && plinkoBall.col <= 8) leftChance = 0.72;
-          else if (plinkoBall.col >= 10 && plinkoBall.col <= 11) leftChance = 0.28;
-          else if (plinkoBall.col < 7) leftChance = 0.60;
-          else if (plinkoBall.col > 11) leftChance = 0.40;
+          if (plinkoBall.col < 7) leftChance = 0.42;
+          else if (plinkoBall.col > 11) leftChance = 0.58;
 
           const nudge = Math.random() < leftChance ? -1 : 1;
           plinkoBall.col = Math.max(1, Math.min(PLINKO_COLS - 2, plinkoBall.col + nudge));
