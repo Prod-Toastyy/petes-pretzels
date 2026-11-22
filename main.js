@@ -90,7 +90,6 @@ async function applyCloudUserSave(user) {
   }
 }
 
-// Milestone Module Color Staging (10 / 25 / 50 / 100 thresholds)
 function getModuleTierInfo(count) {
   if (count >= 100) return { tier: 4, label: "TIER IV • 5x", mult: 5.0, next: null };
   if (count >= 50)  return { tier: 3, label: "TIER III • 3x", mult: 3.0, next: 100 };
@@ -483,8 +482,6 @@ const Projects = [
       logMessage("Upgraded: Sub-orbital pretzel drops active.");
     }
   },
-
-  // Hybrid Cash + Research Point (RP) Upgrades
   {
     id: "rp_cryo_extruder",
     icon: "[❄️]",
@@ -583,6 +580,7 @@ const Projects = [
 let pendingSales = 0;
 let cashFlowHistory = [];
 let liveCashPerSec = 0;
+let manualBakeHistory = [];
 let crosshairPos = 10;
 let crosshairDir = 1;
 let lastAnimTime = null;
@@ -590,7 +588,6 @@ let lastShotTime = 0;
 let controlsBound = false;
 let globeSpinTimer = 0;
 
-// Supply Chain Base Constants & Progressive Payroll Scaling
 const SALT_BASE_RATE = 40;
 const WHEAT_BASE_RATE = 60;
 const REFINERY_BASE_RATE = 80;
@@ -598,7 +595,6 @@ const SALT_BASE_PAYROLL = 12.00;
 const WHEAT_BASE_PAYROLL = 20.00;
 const REFINERY_BASE_PAYROLL = 45.00;
 
-// ASCII Plinko State (19 columns wide)
 const PLINKO_COLS = 19;
 const PLINKO_ROWS = 6;
 const PLINKO_COST = 50;
@@ -753,10 +749,55 @@ function getEffectivePriceSafe() {
   return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * goldBonus * rushMult * 100) / 100;
 }
 
+function isSupplyChainActivelyRunning() {
+  if (!GameState.unlockedSupplyChain || !GameState.supplyChainEnabled) return false;
+  return getSupplyPayrollPerSec() <= 0 || GameState.funds > 0;
+}
+
+function getActiveSupplyRates() {
+  if (!isSupplyChainActivelyRunning()) {
+    return { saltPerSec: 0, wheatPerSec: 0, doughPerSec: 0 };
+  }
+  const saltMult = getModuleTierInfo(GameState.saltMines).mult;
+  const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult;
+  const refineryMult = getModuleTierInfo(GameState.refineries).mult;
+
+  const saltPerSec = GameState.saltMines * SALT_BASE_RATE * saltMult;
+  const wheatPerSec = GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult;
+  const maxRefineryRate = GameState.refineries * REFINERY_BASE_RATE * refineryMult;
+
+  const availableSalt = (GameState.salt || 0) + saltPerSec;
+  const availableWheat = (GameState.wheat || 0) + wheatPerSec;
+  const doughPerSec = GameState.refineries > 0
+    ? Math.max(0, Math.min(maxRefineryRate, availableSalt, availableWheat))
+    : 0;
+
+  return { saltPerSec, wheatPerSec, doughPerSec };
+}
+
+function recordManualBakeRate(bakedAmount) {
+  if (!bakedAmount || bakedAmount <= 0) return;
+  manualBakeHistory.push({ time: Date.now(), amount: bakedAmount });
+}
+
+function getManualBakesPerSec() {
+  const nowMs = Date.now();
+  const windowMs = 1500;
+  manualBakeHistory = manualBakeHistory.filter(entry => nowMs - entry.time <= windowMs);
+  const totalBaked = manualBakeHistory.reduce((sum, entry) => sum + entry.amount, 0);
+  return Math.round((totalBaked / (windowMs / 1000)) * 10) / 10;
+}
+
 function getEffectiveBakeRate() {
-  if (GameState.dough <= 0) return 0;
-  const tierMult = getModuleTierInfo(GameState.extruders).mult;
-  return GameState.extruders * GameState.extruderSpeed * tierMult;
+  const extruderMult = getModuleTierInfo(GameState.extruders).mult;
+  const extruderBakeRate = GameState.extruders * GameState.extruderSpeed * extruderMult;
+  const manualRate = getManualBakesPerSec();
+
+  if (GameState.dough > 0) {
+    return extruderBakeRate + manualRate;
+  }
+  const { doughPerSec } = getActiveSupplyRates();
+  return Math.min(extruderBakeRate, doughPerSec) + manualRate;
 }
 
 function getEffectiveMaxDelivery() {
@@ -827,7 +868,8 @@ window.handleManualBake = function() {
     render();
     return;
   }
-  bakePretzels(GameState.clickPower || 1);
+  const baked = bakePretzels(GameState.clickPower || 1);
+  recordManualBakeRate(baked);
   render();
 };
 
@@ -901,9 +943,6 @@ function getEvolvedAscii() {
   return base;
 }
 
-// ==========================================
-// ASCII PLINKO & GOLDEN RUSH SYSTEM (19-Col Wide)
-// ==========================================
 function renderPlinkoBoard() {
   const boardEl = document.getElementById("plinko-board");
   if (!boardEl) return;
@@ -1013,9 +1052,6 @@ function spawnFallingGoldenPretzel() {
   }, 4600);
 }
 
-// ==========================================
-// TARGET RANGE MINI-GAME
-// ==========================================
 function shootTarget() {
   if (!GameState.started || !GameState.unlockedMinigame) return;
 
@@ -1075,6 +1111,7 @@ function resetRegionalPanelsUI() {
   pendingSales = 0;
   cashFlowHistory = [];
   liveCashPerSec = 0;
+  manualBakeHistory = [];
   plinkoBall = null;
 
   document.body.classList.remove("golden-rush-active");
@@ -1085,6 +1122,7 @@ function resetRegionalPanelsUI() {
   hideEl("panel-hand-dough");
   hideEl("panel-automation");
   hideEl("system-supply-chain");
+  hideEl("refinery-rate-wrap");
   hideEl("system-delivery");
   hideEl("panel-trucks");
   hideEl("panel-drones");
@@ -1111,7 +1149,10 @@ function applySessionUI() {
   if (GameState.unlockedIncomeTicker) showEl("income-rate-line");
   if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
   if (GameState.unlockedAutomation) showEl("panel-automation");
-  if (GameState.unlockedSupplyChain) showEl("system-supply-chain");
+  if (GameState.unlockedSupplyChain) {
+    showEl("system-supply-chain");
+    if (GameState.refineries > 0) showEl("refinery-rate-wrap");
+  }
   if (GameState.unlockedTrucks || GameState.unlockedDrones) showEl("system-delivery");
   if (GameState.unlockedTrucks) showEl("panel-trucks");
   if (GameState.unlockedDrones) showEl("panel-drones");
@@ -1134,7 +1175,6 @@ function bindControls() {
 
   onClick("btn-bake", window.handleManualBake);
 
-  // Top-Right Bakery Menu Cloud Login / Sync Controls
   onClick("btn-cloud-login", async () => {
     const email = (document.getElementById("cloud-email")?.value || "").trim();
     const password = document.getElementById("cloud-password")?.value || "";
@@ -1279,6 +1319,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
       }
+      showEl("refinery-rate-wrap");
       GameState.save(true);
       render();
     }
@@ -1293,6 +1334,7 @@ function bindControls() {
       GameState.refineryCost = GameState.refineries === 0
         ? baseCost
         : Math.round((GameState.refineryCost / 1.50) * 100) / 100;
+      if (GameState.refineries === 0) hideEl("refinery-rate-wrap");
       logMessage(`Sold 1 Dough Refinery for +$${refund.toFixed(2)}.`);
       GameState.save(true);
       render();
@@ -1650,9 +1692,21 @@ function render() {
   if (GameState.unlockedSupplyChain) {
     showEl("system-supply-chain");
     const totalPayroll = getSupplyPayrollPerSec();
+    const { saltPerSec, wheatPerSec, doughPerSec } = getActiveSupplyRates();
+
     setText("salt-stock", Math.floor(GameState.salt).toLocaleString());
     setText("wheat-stock", Math.floor(GameState.wheat).toLocaleString());
+    setText("salt-active-rate", Math.floor(saltPerSec).toLocaleString());
+    setText("wheat-active-rate", Math.floor(wheatPerSec).toLocaleString());
+    setText("dough-active-rate", Math.floor(doughPerSec).toLocaleString());
     setText("supply-payroll-badge", totalPayroll.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
+    if (GameState.refineries > 0) {
+      showEl("refinery-rate-wrap");
+      setText("refinery-active-rate", Math.floor(doughPerSec).toLocaleString());
+    } else {
+      hideEl("refinery-rate-wrap");
+    }
 
     const toggleSupplyBtn = document.getElementById("btn-toggle-supply");
     if (toggleSupplyBtn) {
@@ -1732,7 +1786,7 @@ function render() {
   setText("promo-bonus", `+${totalPromoPct}%`);
   setDisabled("btn-buy-promo", GameState.funds < GameState.promoCost);
 
-  setText("bake-rate", bakeRate.toLocaleString());
+  setText("bake-rate", bakeRate.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
   setText("sell-rate", effectiveDelivery.toFixed(1));
 
   setText("extruder-count", GameState.extruders);
@@ -1773,7 +1827,6 @@ function render() {
   });
 }
 
-// Frame-rate independent animation loop for Target Crosshair, Plinko & Spinning Globe
 function animateMinigames(timestamp) {
   if (lastAnimTime === null) lastAnimTime = timestamp;
   const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.1);
@@ -1886,17 +1939,19 @@ async function bootGame() {
   render();
   requestAnimationFrame(animateMinigames);
 
-  // Game Loop (10 ticks per second)
   setInterval(() => {
     if (!GameState.started) return;
 
     let tickNetCash = 0;
+    let tickRefinedDough = 0;
 
     if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
       const tickPayroll = getSupplyPayrollPerSec() / 10;
-      if (tickPayroll > 0 && GameState.funds >= tickPayroll) {
-        GameState.funds -= tickPayroll;
-        tickNetCash -= tickPayroll;
+      if (tickPayroll <= 0 || GameState.funds >= tickPayroll) {
+        if (tickPayroll > 0) {
+          GameState.funds -= tickPayroll;
+          tickNetCash -= tickPayroll;
+        }
 
         const saltMult = getModuleTierInfo(GameState.saltMines).mult;
         const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult;
@@ -1912,6 +1967,7 @@ async function bootGame() {
             GameState.salt -= actualRefined;
             GameState.wheat -= actualRefined;
             GameState.dough += actualRefined;
+            tickRefinedDough = actualRefined;
           }
         }
       }
@@ -1923,9 +1979,18 @@ async function bootGame() {
       buyDoughBatch(true);
     }
 
-    const rawBakeRate = getEffectiveBakeRate();
-    if (rawBakeRate > 0 && GameState.dough > 0) {
-      bakePretzels(rawBakeRate / 10);
+    const extruderMult = getModuleTierInfo(GameState.extruders).mult;
+    const rawBakeRate = GameState.extruders * GameState.extruderSpeed * extruderMult;
+    if (rawBakeRate > 0) {
+      const requestedTickBake = rawBakeRate / 10;
+      const fromExistingDough = Math.min(GameState.dough, requestedTickBake);
+      if (fromExistingDough > 0) {
+        bakePretzels(fromExistingDough);
+      }
+      const leftoverNeed = requestedTickBake - fromExistingDough;
+      if (leftoverNeed > 0 && tickRefinedDough > 0) {
+        bakePretzels(Math.min(GameState.dough, tickRefinedDough, leftoverNeed));
+      }
     }
 
     if (GameState.inventory > 0) {

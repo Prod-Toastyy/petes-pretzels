@@ -200,7 +200,11 @@
         <span id="header-gold-pill" class="gold-pill hidden">[🥨★] <strong id="header-gold-count">0</strong> (<span id="header-gold-bonus">+0%</span>)</span>
       </div>
       <h1>Pretzels Baked: <span id="pretzels-total">0</span></h1>
-      <p class="subtext">Rate: <span id="bake-rate">0.0</span>/sec baked | <span id="sell-rate">1.0</span>/sec max delivery</p>
+      <p class="subtext">
+        Rate: <span id="bake-rate">0.0</span>/sec baked
+        <span id="refinery-rate-wrap" class="hidden"> | <span id="refinery-active-rate">0</span>/sec dough refined</span>
+        | <span id="sell-rate">1.0</span>/sec max delivery
+      </p>
     </div>
     <pre id="ascii-stage"></pre>
   </header>
@@ -274,7 +278,12 @@
       <div class="row-header">
         <h2>[⛓️] Supply Chain & Workers</h2>
         <div class="supply-header-right">
-          <span class="supply-stock-pill">Salt: <strong id="salt-stock">0</strong> lbs | Wheat: <strong id="wheat-stock">0</strong> lbs | Payroll: -$<strong id="supply-payroll-badge">0.00</strong>/sec</span>
+          <span class="supply-stock-pill">
+            Salt: <strong id="salt-stock">0</strong> lbs (+<strong id="salt-active-rate">0</strong>/s) |
+            Wheat: <strong id="wheat-stock">0</strong> lbs (+<strong id="wheat-active-rate">0</strong>/s) |
+            Dough: +<strong id="dough-active-rate">0</strong>/s |
+            Payroll: -$<strong id="supply-payroll-badge">0.00</strong>/sec
+          </span>
           <button type="button" id="btn-toggle-supply" class="close-small-btn">Operations: ON</button>
         </div>
       </div>
