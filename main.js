@@ -57,6 +57,39 @@ function applyTheme(themeId) {
   refreshThemeDropdown();
 }
 
+function refreshCloudMenuUI() {
+  const loggedOutBox = document.getElementById("cloud-logged-out-controls");
+  const loggedInBox = document.getElementById("cloud-logged-in-controls");
+  const emailEl = document.getElementById("cloud-user-email");
+
+  if (typeof CloudSave !== "undefined" && CloudSave.user) {
+    if (loggedOutBox) loggedOutBox.classList.add("hidden");
+    if (loggedInBox) loggedInBox.classList.remove("hidden");
+    if (emailEl) emailEl.textContent = CloudSave.user.email || "Signed In";
+  } else {
+    if (loggedOutBox) loggedOutBox.classList.remove("hidden");
+    if (loggedInBox) loggedInBox.classList.add("hidden");
+  }
+}
+
+async function applyCloudUserSave(user) {
+  refreshCloudMenuUI();
+  if (typeof CloudSave === "undefined" || !user) return;
+
+  const cloudSave = await CloudSave.loadFromCloud();
+  if (cloudSave && cloudSave.started) {
+    GameState.applySaveObject(cloudSave);
+    sanitizeNumbers();
+    updateDemand();
+    applySessionUI();
+    logMessage(`Cloud save loaded for ${GameState.playerName}.`);
+    render();
+  } else if (GameState.started) {
+    GameState.save(true);
+    logMessage("Current save uploaded to cloud.");
+  }
+}
+
 // Milestone Module Color Staging (10 / 25 / 50 / 100 thresholds)
 function getModuleTierInfo(count) {
   if (count >= 100) return { tier: 4, label: "TIER IV • 5x", mult: 5.0, next: null };
@@ -108,7 +141,7 @@ window.startGameFromModal = function() {
     GameState.playerName = nameInput || "Baker";
     GameState.started = true;
     if (typeof GameState.save === "function") {
-      GameState.save();
+      GameState.save(true);
     }
   }
 
@@ -1101,9 +1134,66 @@ function bindControls() {
 
   onClick("btn-bake", window.handleManualBake);
 
+  // Top-Right Bakery Menu Cloud Login / Sync Controls
+  onClick("btn-cloud-login", async () => {
+    const email = (document.getElementById("cloud-email")?.value || "").trim();
+    const password = document.getElementById("cloud-password")?.value || "";
+    if (!email || !password) {
+      setText("cloud-menu-msg", "Enter email and password.");
+      return;
+    }
+    try {
+      setText("cloud-menu-msg", "Logging in...");
+      const data = await CloudSave.signIn(email, password);
+      if (data?.user) {
+        setText("cloud-menu-msg", "Logged in.");
+        await applyCloudUserSave(data.user);
+      }
+    } catch (err) {
+      setText("cloud-menu-msg", err.message || "Login failed.");
+    }
+  });
+
+  onClick("btn-cloud-signup", async () => {
+    const email = (document.getElementById("cloud-email")?.value || "").trim();
+    const password = document.getElementById("cloud-password")?.value || "";
+    if (!email || password.length < 6) {
+      setText("cloud-menu-msg", "Enter email and a 6+ char password.");
+      return;
+    }
+    try {
+      setText("cloud-menu-msg", "Creating account...");
+      const data = await CloudSave.signUp(email, password);
+      if (data?.user && data?.session) {
+        setText("cloud-menu-msg", "Account created and synced.");
+        await applyCloudUserSave(data.user);
+      } else {
+        setText("cloud-menu-msg", "Check email to confirm, then log in.");
+      }
+    } catch (err) {
+      setText("cloud-menu-msg", err.message || "Sign up failed.");
+    }
+  });
+
+  onClick("btn-cloud-sync-now", () => {
+    if (GameState.started && typeof CloudSave !== "undefined" && CloudSave.user) {
+      GameState.save(true);
+      setText("cloud-menu-msg", "Synced to cloud.");
+    }
+  });
+
+  onClick("btn-cloud-logout", async () => {
+    if (GameState.started && typeof CloudSave !== "undefined" && CloudSave.user) {
+      GameState.save(true);
+    }
+    await CloudSave.signOut();
+    refreshCloudMenuUI();
+    setText("cloud-menu-msg", "Signed out of cloud.");
+  });
+
   onClick("btn-buy-dough", () => {
     if (buyDoughBatch(false)) {
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1129,7 +1219,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1144,7 +1234,7 @@ function bindControls() {
         ? baseCost
         : Math.round((GameState.saltMineCost / 1.45) * 100) / 100;
       logMessage(`Sold 1 Rock Salt Mine for +$${refund.toFixed(2)}.`);
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1159,7 +1249,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1174,7 +1264,7 @@ function bindControls() {
         ? baseCost
         : Math.round((GameState.wheatFarmCost / 1.45) * 100) / 100;
       logMessage(`Sold 1 Winter Wheat Field for +$${refund.toFixed(2)}.`);
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1189,7 +1279,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1204,7 +1294,7 @@ function bindControls() {
         ? baseCost
         : Math.round((GameState.refineryCost / 1.50) * 100) / 100;
       logMessage(`Sold 1 Dough Refinery for +$${refund.toFixed(2)}.`);
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1250,6 +1340,8 @@ function bindControls() {
 
   onClick("player-badge", () => {
     refreshThemeDropdown();
+    refreshCloudMenuUI();
+    setText("cloud-menu-msg", "");
     showEl("restart-modal");
   });
 
@@ -1270,7 +1362,7 @@ function bindControls() {
 
   onClick("btn-confirm-restart", () => {
     if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
-      GameState.reset();
+      GameState.reset(true);
     }
     applyTheme("espresso");
     resetRegionalPanelsUI();
@@ -1302,7 +1394,7 @@ function bindControls() {
       } else {
         logMessage(`Marketing upgraded to Level ${GameState.promoLevel}!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1342,7 +1434,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1357,7 +1449,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1372,7 +1464,7 @@ function bindControls() {
         ? baseCost
         : Math.round((GameState.truckCost / 1.48) * 100) / 100;
       logMessage(`Sold 1 Delivery Truck for +$${refund.toFixed(2)}.`);
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1387,7 +1479,7 @@ function bindControls() {
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
       }
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1402,7 +1494,7 @@ function bindControls() {
         ? baseCost
         : Math.round((GameState.droneCost / 1.55) * 100) / 100;
       logMessage(`Sold 1 Pretzel Drone for +$${refund.toFixed(2)}.`);
-      GameState.save();
+      GameState.save(true);
       render();
     }
   });
@@ -1479,7 +1571,7 @@ function checkUnlocks() {
             GameState.completedProjects.push(proj.id);
             proj.effect();
             card.remove();
-            GameState.save();
+            GameState.save(true);
             render();
           }
         });
@@ -1489,7 +1581,6 @@ function checkUnlocks() {
 }
 
 function render() {
-  // Evolving ASCII & Tier Styling strictly for the 7 Upgradeable Modules
   const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
   const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
   const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
@@ -1757,7 +1848,7 @@ function animateMinigames(timestamp) {
   requestAnimationFrame(animateMinigames);
 }
 
-function bootGame() {
+async function bootGame() {
   if (typeof GameState === "undefined") {
     logMessage("Error: state.js did not load. Check file folder.");
     return;
@@ -1772,6 +1863,15 @@ function bootGame() {
   updateDemand();
   initSetupPicker();
   bindControls();
+
+  if (typeof CloudSave !== "undefined") {
+    CloudSave.init();
+    const sessionUser = await CloudSave.getSessionUser();
+    refreshCloudMenuUI();
+    if (sessionUser) {
+      await applyCloudUserSave(sessionUser);
+    }
+  }
 
   if (GameState.started) {
     applySessionUI();
@@ -1872,11 +1972,11 @@ function bootGame() {
   }, 100);
 
   setInterval(() => {
-    if (GameState.started) GameState.save();
-  }, 5000);
+    if (GameState.started) GameState.save(true);
+  }, 15000);
 
   window.addEventListener("beforeunload", () => {
-    if (GameState.started) GameState.save();
+    if (GameState.started) GameState.save(true);
   });
 }
 

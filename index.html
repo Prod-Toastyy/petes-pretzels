@@ -4,10 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pete's Pretzels</title>
-  <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
-  <link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
-  <link href="[https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap](https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap)" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -37,7 +38,7 @@
       if (typeof GameState !== "undefined") {
         GameState.playerName = playerName;
         GameState.started = true;
-        if (typeof GameState.save === "function") GameState.save();
+        if (typeof GameState.save === "function") GameState.save(true);
       }
 
       var badge = document.getElementById("display-player-name");
@@ -119,12 +120,38 @@
     </div>
   </div>
 
-  <!-- Bakery Menu / Options & Restart Modal -->
+  <!-- Bakery Menu / Options & Cloud Save Login Modal -->
   <div id="restart-modal" class="modal-overlay hidden">
     <div class="modal-card small-modal">
       <div class="row-header">
         <h2>[⚙️] Bakery Options</h2>
         <button type="button" id="btn-close-restart" class="close-small-btn">Close</button>
+      </div>
+
+      <div class="option-group" style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-module);">
+        <div class="module-head" style="margin-bottom: 6px;">
+          <label style="margin: 0;">Cloud Save Sync</label>
+          <span id="cloud-status-pill" class="tier-badge">Cloud: Ready</span>
+        </div>
+
+        <div id="cloud-logged-out-controls">
+          <input type="email" id="cloud-email" placeholder="Email" autocomplete="email" style="margin-bottom: 8px; padding: 7px 10px; font-size: 12px;">
+          <input type="password" id="cloud-password" placeholder="Password (6+ chars)" autocomplete="current-password" style="margin-bottom: 8px; padding: 7px 10px; font-size: 12px;">
+          <div class="btn-row">
+            <button type="button" id="btn-cloud-login">Log In</button>
+            <button type="button" id="btn-cloud-signup">Sign Up</button>
+          </div>
+        </div>
+
+        <div id="cloud-logged-in-controls" class="hidden">
+          <p class="subtext" style="margin-bottom: 6px;">Account: <strong id="cloud-user-email"></strong></p>
+          <div class="btn-row">
+            <button type="button" id="btn-cloud-sync-now">Sync Now</button>
+            <button type="button" id="btn-cloud-logout">Log Out</button>
+          </div>
+        </div>
+
+        <p id="cloud-menu-msg" class="subtext"></p>
       </div>
 
       <div class="option-group" style="margin-bottom: 16px;">
@@ -372,6 +399,7 @@
   </div>
 
   <script src="ascii.js"></script>
+  <script src="supabase.js"></script>
   <script src="state.js"></script>
   <script src="achievements.js"></script>
   <script src="main.js"></script>

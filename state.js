@@ -200,17 +200,64 @@ const GameState = {
     this.wheatFarmCost = Math.round(4000.00 * scale * 100) / 100;
     this.refineryCost = Math.round(8500.00 * scale * 100) / 100;
 
-    this.save();
+    this.save(true);
     return earnedGold;
   },
 
-  save() {
+  getSnapshot() {
     this.lastTick = Date.now();
-    const dataToSave = {};
+    const snapshot = {};
     for (const key of Object.keys(DEFAULT_STATE)) {
-      dataToSave[key] = this[key];
+      snapshot[key] = this[key];
     }
-    localStorage.setItem(SAVE_KEY, JSON.stringify(dataToSave));
+    return snapshot;
+  },
+
+  applySaveObject(saved) {
+    if (!saved || typeof saved !== "object") return 0;
+    for (const key of Object.keys(DEFAULT_STATE)) {
+      if (saved[key] !== undefined) {
+        this[key] = saved[key];
+      }
+    }
+
+    const batchSize = this.doughBatchSize || 500;
+    const now = Date.now();
+    const rawElapsed = Math.floor((now - (this.lastTick || now)) / 1000);
+    const elapsedSeconds = Math.min(Math.max(0, rawElapsed), MAX_OFFLINE_SECONDS);
+    this.lastTick = now;
+
+    if (this.started && elapsedSeconds > 5) {
+      const potentialBake = this.extruders * this.extruderSpeed * elapsedSeconds;
+      if (this.unlockedAutoDough && this.autoDoughEnabled) {
+        const batchesNeeded = Math.ceil(Math.max(0, potentialBake - this.dough) / batchSize);
+        const affordableBatches = Math.min(batchesNeeded, Math.floor(this.funds / this.doughCost));
+        this.funds -= affordableBatches * this.doughCost;
+        this.dough += affordableBatches * batchSize;
+      }
+
+      const produced = Math.min(this.dough, potentialBake);
+      this.dough -= produced;
+      this.pretzels += produced;
+      this.inventory += produced;
+
+      const demandFactor = this.demand / 100;
+      const maxSell = this.getMaxDeliveryRate() * demandFactor * elapsedSeconds;
+      const sold = Math.min(this.inventory, maxSell);
+      this.inventory -= sold;
+      this.funds += sold * this.getEffectivePrice();
+
+      return elapsedSeconds;
+    }
+    return 0;
+  },
+
+  save(syncCloud = false) {
+    const snapshot = this.getSnapshot();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
+    if (syncCloud && typeof CloudSave !== "undefined" && CloudSave.user) {
+      CloudSave.pushToCloud(snapshot);
+    }
   },
 
   load() {
@@ -218,49 +265,18 @@ const GameState = {
     if (!raw) return 0;
 
     try {
-      const saved = JSON.parse(raw);
-      for (const key of Object.keys(DEFAULT_STATE)) {
-        if (saved[key] !== undefined) {
-          this[key] = saved[key];
-        }
-      }
-
-      const batchSize = this.doughBatchSize || 500;
-      const now = Date.now();
-      const rawElapsed = Math.floor((now - (this.lastTick || now)) / 1000);
-      const elapsedSeconds = Math.min(Math.max(0, rawElapsed), MAX_OFFLINE_SECONDS);
-      this.lastTick = now;
-
-      if (this.started && elapsedSeconds > 5) {
-        const potentialBake = this.extruders * this.extruderSpeed * elapsedSeconds;
-        if (this.unlockedAutoDough && this.autoDoughEnabled) {
-          const batchesNeeded = Math.ceil(Math.max(0, potentialBake - this.dough) / batchSize);
-          const affordableBatches = Math.min(batchesNeeded, Math.floor(this.funds / this.doughCost));
-          this.funds -= affordableBatches * this.doughCost;
-          this.dough += affordableBatches * batchSize;
-        }
-
-        const produced = Math.min(this.dough, potentialBake);
-        this.dough -= produced;
-        this.pretzels += produced;
-        this.inventory += produced;
-
-        const demandFactor = this.demand / 100;
-        const maxSell = this.getMaxDeliveryRate() * demandFactor * elapsedSeconds;
-        const sold = Math.min(this.inventory, maxSell);
-        this.inventory -= sold;
-        this.funds += sold * this.getEffectivePrice();
-
-        return elapsedSeconds;
-      }
+      return this.applySaveObject(JSON.parse(raw));
     } catch (e) {
       console.error("Save load error:", e);
     }
     return 0;
   },
 
-  reset() {
+  reset(syncCloud = false) {
     localStorage.removeItem(SAVE_KEY);
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+    if (syncCloud && typeof CloudSave !== "undefined" && CloudSave.user) {
+      CloudSave.pushToCloud(this.getSnapshot());
+    }
   }
 };
