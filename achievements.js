@@ -197,6 +197,8 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
+const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
+
 const GLOBE_MAP = [
   "..............................",
   "..000000.......2222..4444444..",
@@ -215,6 +217,70 @@ let globeSpinOffset = 0;
 let activeLeaderboardMode = "pretzels";
 let liveLeaderboardRows = [];
 let leaderboardFetching = false;
+
+function getLeaderboardClient() {
+  if (typeof CloudSave !== "undefined" && CloudSave.client) return CloudSave.client;
+  if (typeof supabaseClient !== "undefined" && supabaseClient) return supabaseClient;
+  if (typeof SUPABASE_URL !== "undefined" && typeof SUPABASE_ANON_KEY !== "undefined" && window.supabase?.createClient) {
+    return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return null;
+}
+
+function readOldShops() {
+  try {
+    const raw = localStorage.getItem(OLD_SHOPS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function recordCurrentShopSnapshot() {
+  if (typeof GameState === "undefined" || !GameState.started) return [];
+  const shopName = (GameState.playerName || "").trim() || "Unnamed Pretzel Shop";
+  const slug = shopName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "shop";
+  const pretzelsAllRuns = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
+    ? Math.floor(GameState.getTotalLifetimePretzelsAllRuns())
+    : Math.floor((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
+  const bestWinSeconds = (GameState.bestRunSeconds || 0) > 0
+    ? Math.floor(GameState.bestRunSeconds)
+    : null;
+
+  const shops = readOldShops();
+  const existingIdx = shops.findIndex(s => s.shopKey === slug || s.shopName === shopName);
+
+  if (existingIdx >= 0) {
+    const prev = shops[existingIdx];
+    shops[existingIdx] = {
+      shopKey: slug,
+      shopName,
+      pretzelsAllRuns: Math.max(Number(prev.pretzelsAllRuns) || 0, pretzelsAllRuns),
+      bestWinSeconds: (Number(prev.bestWinSeconds) > 0 && bestWinSeconds > 0)
+        ? Math.min(Number(prev.bestWinSeconds), bestWinSeconds)
+        : (bestWinSeconds || (Number(prev.bestWinSeconds) > 0 ? Number(prev.bestWinSeconds) : null))
+    };
+  } else {
+    shops.push({
+      shopKey: slug,
+      shopName,
+      pretzelsAllRuns,
+      bestWinSeconds
+    });
+  }
+
+  // Keep top 15 worthy shops by pretzels
+  shops.sort((a, b) => (Number(b.pretzelsAllRuns) || 0) - (Number(a.pretzelsAllRuns) || 0));
+  const trimmed = shops.slice(0, 15);
+  try {
+    localStorage.setItem(OLD_SHOPS_KEY, JSON.stringify(trimmed));
+  } catch (e) {
+    console.error("Failed to save old shops:", e);
+  }
+  return trimmed;
+}
 
 function renderSpinningGlobe() {
   const globeEl = document.getElementById("ascii-globe");
@@ -289,38 +355,27 @@ async function syncAndFetchLeaderboard() {
   leaderboardFetching = true;
 
   try {
-    const client = (typeof CloudSave !== "undefined" && CloudSave.client)
-      ? CloudSave.client
-      : (typeof supabaseClient !== "undefined" ? supabaseClient : null);
-
-    const shopName = (GameState.playerName || "").trim() || "Unnamed Pretzel Shop";
-    const pretzelsAllRuns = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
-      ? Math.floor(GameState.getTotalLifetimePretzelsAllRuns())
-      : Math.floor((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
-    const bestWinSeconds = (GameState.bestRunSeconds || 0) > 0
-      ? Math.floor(GameState.bestRunSeconds)
-      : null;
+    const savedShops = recordCurrentShopSnapshot();
+    const client = getLeaderboardClient();
 
     if (client) {
-      const currentUser = (typeof CloudSave !== "undefined" && CloudSave.user)
-        ? CloudSave.user
-        : (await client.auth.getUser())?.data?.user;
-
-      if (currentUser) {
-        await client
-          .from("shop_leaderboard")
-          .upsert({
-            user_id: currentUser.id,
-            shop_name: shopName,
-            pretzels_all_runs: pretzelsAllRuns,
-            best_win_seconds: bestWinSeconds,
-            updated_at: new Date().toISOString()
-          }, { onConflict: "user_id" });
+      for (const shop of savedShops) {
+        if ((shop.pretzelsAllRuns || 0) > 0 || (shop.bestWinSeconds || 0) > 0) {
+          await client
+            .from("shop_leaderboard")
+            .upsert({
+              shop_key: shop.shopKey,
+              shop_name: shop.shopName,
+              pretzels_all_runs: Math.floor(shop.pretzelsAllRuns || 0),
+              best_win_seconds: shop.bestWinSeconds ? Math.floor(shop.bestWinSeconds) : null,
+              updated_at: new Date().toISOString()
+            }, { onConflict: "shop_key" });
+        }
       }
 
       let query = client
         .from("shop_leaderboard")
-        .select("user_id, shop_name, pretzels_all_runs, best_win_seconds")
+        .select("shop_key, shop_name, pretzels_all_runs, best_win_seconds")
         .limit(25);
 
       if (activeLeaderboardMode === "time") {
@@ -334,11 +389,12 @@ async function syncAndFetchLeaderboard() {
 
       const { data, error } = await query;
       if (!error && Array.isArray(data)) {
+        const myKeys = new Set(savedShops.map(s => s.shopKey));
         liveLeaderboardRows = data.map(row => ({
           shopName: row.shop_name || "Unnamed Pretzel Shop",
           pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
           bestWinSeconds: row.best_win_seconds ? Number(row.best_win_seconds) : null,
-          isUser: Boolean(currentUser && row.user_id === currentUser.id)
+          isUser: myKeys.has(row.shop_key)
         }));
       }
     }
@@ -355,28 +411,16 @@ function renderLeaderboard() {
   if (!listEl || typeof GameState === "undefined") return;
 
   const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
-  const userShopName = (GameState.playerName || "").trim() || "Your Pretzel Shop";
-  const userLifetime = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
-    ? GameState.getTotalLifetimePretzelsAllRuns()
-    : ((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
-  const userBestSecs = Math.floor(GameState.bestRunSeconds || 0);
+  const savedShops = recordCurrentShopSnapshot();
 
   let entries = liveLeaderboardRows.length > 0
     ? [...liveLeaderboardRows]
-    : [{
-        shopName: userShopName,
-        pretzelsAllRuns: userLifetime,
-        bestWinSeconds: userBestSecs > 0 ? userBestSecs : null,
-        isUser: true
-      }];
+    : savedShops.map(s => ({ ...s, isUser: true }));
 
-  if (!entries.some(e => e.isUser)) {
-    entries.push({
-      shopName: userShopName,
-      pretzelsAllRuns: userLifetime,
-      bestWinSeconds: userBestSecs > 0 ? userBestSecs : null,
-      isUser: true
-    });
+  for (const s of savedShops) {
+    if (!entries.some(e => e.shopName === s.shopName)) {
+      entries.push({ ...s, isUser: true });
+    }
   }
 
   if (activeLeaderboardMode === "time") {
@@ -386,8 +430,9 @@ function renderLeaderboard() {
     entries.sort((a, b) => b.pretzelsAllRuns - a.pretzelsAllRuns);
   }
 
+  const topEntries = entries.slice(0, 10);
   listEl.innerHTML = "";
-  if (entries.length === 0) {
+  if (topEntries.length === 0) {
     const emptyRow = document.createElement("div");
     emptyRow.className = "leaderboard-row";
     emptyRow.innerHTML = `<span>No completed win times posted yet.</span><strong>—</strong>`;
@@ -395,7 +440,7 @@ function renderLeaderboard() {
     return;
   }
 
-  entries.forEach((entry, index) => {
+  topEntries.forEach((entry, index) => {
     const row = document.createElement("div");
     row.className = "leaderboard-row" + (entry.isUser ? " is-player" : "");
 
@@ -404,7 +449,7 @@ function renderLeaderboard() {
       : `${Math.floor(entry.pretzelsAllRuns).toLocaleString()} pretzels`;
 
     row.innerHTML = `
-      <span><strong>#${index + 1}</strong> ${entry.shopName}${entry.isUser ? " (You)" : ""}</span>
+      <span><strong>#${index + 1}</strong> ${entry.shopName}${entry.isUser ? " (Your Shop)" : ""}</span>
       <strong>${statDisplay}</strong>
     `;
     listEl.appendChild(row);
