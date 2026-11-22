@@ -4,16 +4,41 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pete's Pretzels</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
+  <link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
+  <link href="[https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap](https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap)" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="[https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2](https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2)"></script>
 </head>
 <body>
 
+  <!-- Title Intro Screen -->
+  <div id="title-intro-screen" class="intro-screen">
+    <button type="button" id="intro-pretzel-trigger" class="intro-art-btn" aria-label="click pretzel to start">
+      <pre class="intro-ascii-art"> ______   ______   _________  ______   ______       ______   ______    ______   _________  ______  ______   __       ______      
+/_____/\ /_____/\ /________/\/_____/\ /_____/\     /_____/\ /_____/\  /_____/\ /________/\/_____/\/_____/\ /_/\     /_____/\     
+\:::_ \ \\::::_\/_\__.::.__\/\::::_\/_\::::_\/_    \:::_ \ \\:::_ \ \ \::::_\/_\__.::.__\/\:::__\/\::::_\/_\:\ \    \::::_\/_    
+ \:(_) \ \\:\/___/\  \::\ \   \:\/___/\\:\/___/\    \:(_) \ \\:(_) ) )_\:\/___/\  \::\ \     /: /  \:\/___/\\:\ \    \:\/___/\   
+  \: ___\/ \::___\/_  \::\ \   \::___\/_\_::._\:\    \: ___\/ \: __ `\ \\::___\/_  \::\ \   /::/___ \::___\/_\:\ \____\_::._\:\  
+   \ \ \    \:\____/\  \::\ \   \:\____/\ /____\:\    \ \ \    \ \ `\ \ \\:\____/\  \::\ \ /_:/____/\\:\____/\\:\/___/\ /____\:\ 
+    \_\/     \_____\/   \__\/    \_____\/ \_____\/     \_\/     \_\/ \_\/ \_____\/   \__\/ \_______\/ \_____\/ \_____\/ \_____\/ 
+                                                                                                                                 
+
+            
+             					        .'  `'._.'`  '.
+              					      |  .--;   ;--.  |
+              					      |  (  /   \  )  |
+              					       \  ;` /^\ `;  /
+               					        :` .'._.'. `;
+                   				        '-`'.___.'`-'</pre>
+      <span class="intro-cta-label">click pretzel to start</span>
+    </button>
+
+    <div class="intro-bottom-version">BETA.4 • EARTH CONQUEST EDITION</div>
+  </div>
+
   <!-- Start Setup -->
-  <div id="setup-modal" class="modal-overlay">
+  <div id="setup-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <label for="input-player-name">Name</label>
       <input type="text" id="input-player-name" maxlength="28" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();window.forceStartGame();}">
@@ -38,23 +63,106 @@
       if (typeof GameState !== "undefined") {
         GameState.playerName = playerName;
         GameState.started = true;
+        if (!GameState.runStartTime) GameState.runStartTime = Date.now();
         if (typeof GameState.save === "function") GameState.save(true);
       }
 
       var badge = document.getElementById("display-player-name");
       if (badge) badge.textContent = playerName;
 
+      var intro = document.getElementById("title-intro-screen");
+      if (intro) intro.classList.add("hidden");
+
       var modal = document.getElementById("setup-modal");
       if (modal) modal.classList.add("hidden");
     };
   </script>
 
-  <!-- Global Conquest, Spinning Globe & Achievements Hub Modal -->
+  <!-- Final World Ending & Pete Pretzel Letter Modal -->
+  <div id="ending-modal" class="modal-overlay hidden">
+    <div class="modal-card ending-card">
+      <div class="row-header">
+        <h2>[👑] Earth Conquered — Letter from Pete Pretzel</h2>
+        <span class="gold-pretzel-pill">SOLID GOLD UI UNLOCKED</span>
+      </div>
+
+      <div class="pete-letter-box">
+        <pre class="pete-portrait">
+    .-""""""-.
+   /  .-.  .-.  \
+  |  (o )  ( o)  |
+  |     __      |
+   \   '=='    /
+    '-..__..-'
+  PETE PRETZEL, CEO
+        </pre>
+        <div class="pete-letter-copy">
+          <p><strong>Dear <span id="ending-player-name">Baker</span>,</strong></p>
+          <p>
+            Well look at you—every continent twisted, salted, and sold from North America to Antarctica.
+            Honestly I thought you'd burn out around sharp beer cheese, so props.
+          </p>
+          <p>
+            Your official corporate reward is a <strong>one-slice pizza party</strong> in the breakroom
+            (crust only, toppings sold separately). Also, you unlocked the <strong>Solid Gold UI</strong>—go
+            ahead and keep your Golden Pretzels and run the whole world back whenever you're ready.
+          </p>
+          <p class="letter-signoff">— Pete Pretzel</p>
+        </div>
+      </div>
+
+      <div class="ending-stats-grid">
+        <div class="stat-tile">
+          <span class="stat-label">This Run Time</span>
+          <strong id="ending-run-time" class="stat-val">0s</strong>
+          <span id="ending-best-time-badge" class="best-badge hidden">NEW BEST TIME!</span>
+          <span class="subtext">Best Run Time: <strong id="ending-best-time">0s</strong></span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Pretzels This Run</span>
+          <strong id="ending-run-pretzels" class="stat-val">0</strong>
+          <span id="ending-best-pretzels-badge" class="best-badge hidden">NEW BEST RUN!</span>
+          <span class="subtext">Best Run Pretzels: <strong id="ending-best-pretzels">0</strong></span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Kept Golden Pretzels</span>
+          <strong id="ending-gold-pretzels" class="stat-val">0</strong>
+          <span class="subtext">Cash Bonus: <strong id="ending-gold-bonus">+0%</strong></span>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top: 14px;">
+        <button type="button" id="btn-continue-current-world" class="close-small-btn" style="flex:1;">Stay in Current Territory</button>
+        <button type="button" id="btn-prestige-next-loop" class="expand-btn" style="flex:1; margin-top:0;">Prestige &amp; Restart Loop (Keep Gold)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Conquest, Spinning Globe, Run Stats & Achievements Hub Modal -->
   <div id="achievements-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="row-header">
-        <h2>[🏆] Global Conquest & Achievements (<span id="ach-bonus-pct">+0%</span> Total Bonus)</h2>
+        <h2>[🏆] Trophy Room, Run Stats &amp; Conquest (<span id="ach-bonus-pct">+0%</span> Total Bonus)</h2>
         <button type="button" id="btn-close-achievements" class="close-small-btn">Close</button>
+      </div>
+
+      <!-- Run Stats & Best Run Records -->
+      <div class="ending-stats-grid" style="margin-bottom: 12px;">
+        <div class="stat-tile">
+          <span class="stat-label">Active Run Duration</span>
+          <strong id="hub-run-duration" class="stat-val">0s</strong>
+          <span class="subtext">Best Run Time: <strong id="hub-best-duration">0s</strong></span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Run Pretzels Baked</span>
+          <strong id="hub-run-pretzels" class="stat-val">0</strong>
+          <span class="subtext">Best Run Pretzels: <strong id="hub-best-pretzels">0</strong></span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Lifetime Pretzels</span>
+          <strong id="hub-lifetime-pretzels" class="stat-val">0</strong>
+          <span class="subtext">Solid Gold UI: <strong id="hub-gold-ui-status">Locked</strong></span>
+        </div>
       </div>
 
       <!-- Continent Expansion, Spinning Globe & Prestige Card -->
@@ -155,12 +263,12 @@
       </div>
 
       <div class="option-group" style="margin-bottom: 16px;">
-        <label for="select-theme">Color Theme (Unlock More by Conquering Continents)</label>
+        <label for="select-theme">Color Theme (Unlock More by Conquering Continents &amp; Finale)</label>
         <select id="select-theme" class="theme-select"></select>
       </div>
 
       <p class="subtext" style="margin-bottom: 14px;">
-        Restarting will erase your current pretzels, funds, upgrades, continents, and achievements and return to the bakery setup screen.
+        Restarting will erase your current pretzels, funds, upgrades, continents, and achievements and return to the title screen.
       </p>
       <div class="btn-row">
         <button type="button" id="btn-cancel-restart">Keep Baking</button>
@@ -169,7 +277,7 @@
     </div>
   </div>
 
-  <!-- Falling Golden Pretzels Layer (Active during 30s Golden Rush) -->
+  <!-- Falling Golden Pretzels & Confetti Layer -->
   <div id="golden-sky-layer" class="golden-sky-layer"></div>
 
   <!-- Top Bar -->
@@ -184,7 +292,7 @@
       <span class="badge-label">Funds</span>
       <span class="badge-value">$<span id="top-funds">0.00</span></span>
     </div>
-    <button type="button" id="btn-open-achievements" class="top-ach-btn" title="Global Conquest & Achievements">
+    <button type="button" id="btn-open-achievements" class="top-ach-btn" title="Trophy Room, Run Stats & Conquest">
       [🏆] Dom: <span id="top-dom-pct">0%</span> | Ach: <span id="top-ach-pct">0%</span>
     </button>
     <button type="button" id="player-badge" class="player-badge-btn" title="Bakery Options">
@@ -211,12 +319,12 @@
 
   <!-- Main Horizontal Rows -->
   <main class="rows-container">
-    
+
     <!-- Row 1: Production -->
     <section class="row-panel" id="row-production">
       <h2>[🔥] Production</h2>
       <div class="row-items">
-        
+
         <div class="module-box">
           <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
           <p class="big-stat-line">Unsold Inventory: <strong id="inventory" class="big-stat-num">0</strong></p>
@@ -276,7 +384,7 @@
     <!-- Row 2: Vertical Supply Chain (Unlocked via R&D) -->
     <section class="row-panel hidden" id="system-supply-chain">
       <div class="row-header">
-        <h2>[⛓️] Supply Chain & Workers</h2>
+        <h2>[⛓️] Supply Chain &amp; Workers</h2>
         <div class="supply-header-right">
           <span class="supply-stock-pill">
             Salt: <strong id="salt-stock">0</strong> lbs (+<strong id="salt-active-rate">0</strong>/s) |
@@ -335,7 +443,7 @@
     <section class="row-panel hidden" id="system-delivery">
       <h2>[⛟] Delivery</h2>
       <div class="row-items">
-        
+
         <div class="module-box hidden" id="panel-trucks">
           <div class="module-head">
             <p><strong>Delivery Trucks: <span id="truck-count">0</span></strong></p>
@@ -368,11 +476,11 @@
     <!-- Row 4: R&D -->
     <section class="row-panel hidden" id="panel-projects">
       <div class="row-header">
-        <h2>[⚗] R&D</h2>
+        <h2>[⚗] R&amp;D</h2>
         <span id="rp-badge" class="rp-badge hidden">Research Points: <strong id="rp-total">0</strong> RP</span>
       </div>
       <div class="row-items">
-        
+
         <!-- Target Mini-Game Box -->
         <div class="module-box hidden" id="panel-minigame">
           <p><strong>[◎] Ballistic Dough Tester</strong></p>

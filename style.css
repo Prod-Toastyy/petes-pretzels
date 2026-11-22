@@ -23,6 +23,84 @@
   --rp-text: #8ce3d5;
 }
 
+/* Starter Computer Green Theme */
+body.theme-computer-green {
+  --bg-main: #040a04;
+  --bg-panel: #081408;
+  --bg-module: #061006;
+  --bg-header: #071207;
+  --bg-well: #020602;
+  --bg-track: #020502;
+  --bg-btn: #0d210d;
+  --border-panel: #1c5c18;
+  --border-module: #154712;
+  --border-btn: #39ff14;
+  --text-main: #7bff66;
+  --text-heading: #39ff14;
+  --text-sub: #43b534;
+  --accent: #39ff14;
+  --accent-contrast: #040a04;
+  --funds-bg: #071a09;
+  --funds-border: #39ff14;
+  --funds-label: #7bff66;
+  --funds-val: #b8ffad;
+  --rp-bg: #071a14;
+  --rp-border: #38e89e;
+  --rp-text: #7bffc9;
+}
+
+/* Starter Light Mode Theme (White) */
+body.theme-light-mode {
+  --bg-main: #ffffff;
+  --bg-panel: #f7f8fa;
+  --bg-module: #ffffff;
+  --bg-header: #f2f4f7;
+  --bg-well: #eef0f4;
+  --bg-track: #e6e9ef;
+  --bg-btn: #e8ecf2;
+  --border-panel: #d0d5dd;
+  --border-module: #dce0e8;
+  --border-btn: #b8c0cc;
+  --text-main: #181c22;
+  --text-heading: #101318;
+  --text-sub: #525b68;
+  --accent: #b86814;
+  --accent-contrast: #ffffff;
+  --funds-bg: #edf7f0;
+  --funds-border: #2e8b52;
+  --funds-label: #1e6b3c;
+  --funds-val: #15522d;
+  --rp-bg: #edf6f6;
+  --rp-border: #2b7a78;
+  --rp-text: #1f5f5d;
+}
+
+/* Solid Gold UI (Unlocked upon conquering final Earth territory) */
+body.theme-gold-solid {
+  --bg-main: #241905;
+  --bg-panel: #362507;
+  --bg-module: #2c1e06;
+  --bg-header: #332307;
+  --bg-well: #1a1203;
+  --bg-track: #140e02;
+  --bg-btn: #4a3309;
+  --border-panel: #d4a024;
+  --border-module: #b3841b;
+  --border-btn: #ffd166;
+  --text-main: #fff7dc;
+  --text-heading: #ffe58f;
+  --text-sub: #e6c473;
+  --accent: #ffd166;
+  --accent-contrast: #1f1402;
+  --funds-bg: #2b2209;
+  --funds-border: #ffd166;
+  --funds-label: #ffe58f;
+  --funds-val: #fff7dc;
+  --rp-bg: #2e2008;
+  --rp-border: #ffbe3b;
+  --rp-text: #ffe08a;
+}
+
 body.theme-terminal {
   --bg-main: #0d1314;
   --bg-panel: #131c1e;
@@ -235,6 +313,189 @@ body {
   margin: 0;
   padding: 14px 20px;
   line-height: 1.35;
+}
+
+/* Full-Screen Warm Espresso Intro Screen */
+.intro-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--bg-main);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
+  padding: 20px 20px 44px 20px;
+  overflow: auto;
+}
+
+.intro-art-btn {
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 16px 20px;
+  background: transparent;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.intro-art-btn:hover:not(:disabled) {
+  background: transparent;
+  border: none;
+}
+
+.intro-ascii-art {
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(6px, 0.9vw, 11px);
+  line-height: 1.12;
+  text-align: left;
+  white-space: pre;
+}
+
+.intro-cta-label {
+  color: var(--text-heading);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.intro-art-btn:hover:not(:disabled) .intro-ascii-art,
+.intro-art-btn:hover:not(:disabled) .intro-cta-label {
+  color: var(--text-heading);
+  filter: brightness(1.15);
+}
+
+.intro-bottom-version {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-sub);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Subtle Visual Juice: Screen Shake & Confetti Stars */
+@keyframes ui-screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -1px); }
+  80% { transform: translate(3px, 2px); }
+}
+
+.screen-shake {
+  animation: ui-screen-shake 0.28s ease;
+}
+
+@keyframes confetti-star-pop {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.7) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--cx)), calc(-50% + var(--cy))) scale(1.25) rotate(140deg);
+  }
+}
+
+.confetti-star {
+  position: fixed;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 2100;
+  text-shadow: 0 0 8px rgba(255, 209, 102, 0.75);
+  animation: confetti-star-pop 0.78s ease-out forwards;
+}
+
+/* Pete Pretzel Ending Letter & Run Stats */
+.ending-card {
+  max-width: 680px;
+  border-color: #ffd166;
+}
+
+.pete-letter-box {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  background: var(--bg-well);
+  border: 1px solid var(--border-btn);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.pete-portrait {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.1;
+  color: var(--accent);
+  background: var(--bg-module);
+  border: 1px solid var(--border-module);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.pete-letter-copy {
+  flex: 1;
+  min-width: 240px;
+}
+
+.letter-signoff {
+  color: var(--text-heading);
+  font-style: italic;
+  margin-top: 8px;
+}
+
+.ending-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 10px;
+}
+
+.stat-tile {
+  background: var(--bg-module);
+  border: 1px solid var(--border-module);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stat-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-sub);
+}
+
+.stat-val {
+  font-size: 16px;
+  color: var(--text-heading);
+}
+
+.best-badge {
+  display: inline-block;
+  width: fit-content;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(255, 209, 102, 0.22);
+  border: 1px solid #ffd166;
+  color: #ffe8a3;
 }
 
 h1, h2, h3 {
@@ -508,7 +769,6 @@ header h1 {
   margin: 0;
 }
 
-/* Milestone Module Color Staging (Base -> Green -> Blue -> Purple -> Gold) */
 .tier-badge {
   font-size: 10px;
   font-weight: 700;
@@ -560,7 +820,6 @@ header h1 {
   color: #ffe8a3;
 }
 
-/* Evolving Module ASCII Art Stage */
 .module-ascii {
   margin: 4px 0 6px 0;
   padding: 4px 6px;

@@ -97,8 +97,6 @@ const ACHIEVEMENTS_LIST = [
     desc: "Bake 1,000,000 total pretzels.",
     check: (s) => s.pretzels >= 1000000
   },
-
-  // Late-Game & Multi-Continent Conquest Achievements
   {
     id: "millionaire_baker",
     icon: "[💰]",
@@ -199,8 +197,6 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
-// Spinning ASCII Globe (30x11 cylindrical map projected onto a sphere)
-// Continent codes: 0=NA, 1=SA, 2=EU, 3=AF, 4=AS, 5=OC, 6=AN, .=Ocean
 const GLOBE_MAP = [
   "..............................",
   "..000000.......2222..4444444..",
@@ -330,34 +326,6 @@ const AchievementManager = {
       && (GameState.pretzels || 0) >= cont.pretzelReq;
   },
 
-  playDing() {
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const now = ctx.currentTime;
-
-      const notes = [659.25, 987.77];
-      notes.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "triangle";
-        osc.frequency.setValueAtTime(freq, now + idx * 0.11);
-
-        gain.gain.setValueAtTime(0.001, now + idx * 0.11);
-        gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.11 + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.11 + 0.65);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + idx * 0.11);
-        osc.stop(now + idx * 0.11 + 0.7);
-      });
-    } catch (e) {
-      // Ignore if browser blocks audio before interaction
-    }
-  },
-
   spawnSparks(container) {
     const sparkChars = ["✦", "✧", "*", "•", "★"];
     for (let i = 0; i < 14; i++) {
@@ -392,6 +360,9 @@ const AchievementManager = {
     });
 
     if (newlyUnlocked) {
+      if (typeof triggerConfettiStarBurst === "function") {
+        triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.75, 10);
+      }
       this.updateButtonCount();
       this.processQueue();
     }
@@ -413,7 +384,6 @@ const AchievementManager = {
       void toast.offsetWidth;
       toast.classList.add("show");
 
-      this.playDing();
       this.spawnSparks(toast);
 
       setTimeout(() => {
@@ -449,7 +419,6 @@ const AchievementManager = {
     if (topBtn) topBtn.classList.toggle("ready-to-expand", readyExpand);
     if (bonusEl) bonusEl.textContent = `+${totalBonusPct}%`;
 
-    // Conquest Card UI inside Modal
     if (typeof GameState.getCurrentContinent === "function") {
       const cont = GameState.getCurrentContinent();
       const nextName = GameState.getNextContinentName();
@@ -475,6 +444,27 @@ const AchievementManager = {
         btnExpand.textContent = `Expand to ${nextName} (+${pendingGold} [🥨★])`;
       }
     }
+
+    const runSecs = Math.floor(GameState.elapsedRunSeconds || 0);
+    const bestSecs = Math.floor(GameState.bestRunSeconds || 0);
+    const runPretzels = Math.floor(GameState.pretzels || 0);
+    const bestPretzels = Math.max(Math.floor(GameState.bestRunPretzels || 0), runPretzels);
+    const lifetimeTotal = (GameState.lifetimePretzelsAllRuns || 0) + runPretzels;
+
+    const hubDurEl = document.getElementById("hub-run-duration");
+    const hubBestDurEl = document.getElementById("hub-best-duration");
+    const hubRunPretzEl = document.getElementById("hub-run-pretzels");
+    const hubBestPretzEl = document.getElementById("hub-best-pretzels");
+    const hubLifePretzEl = document.getElementById("hub-lifetime-pretzels");
+    const hubGoldUiEl = document.getElementById("hub-gold-ui-status");
+
+    const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
+    if (hubDurEl) hubDurEl.textContent = fmtSecs(runSecs);
+    if (hubBestDurEl) hubBestDurEl.textContent = bestSecs > 0 ? fmtSecs(bestSecs) : "—";
+    if (hubRunPretzEl) hubRunPretzEl.textContent = runPretzels.toLocaleString();
+    if (hubBestPretzEl) hubBestPretzEl.textContent = bestPretzels.toLocaleString();
+    if (hubLifePretzEl) hubLifePretzEl.textContent = lifetimeTotal.toLocaleString();
+    if (hubGoldUiEl) hubGoldUiEl.textContent = GameState.goldUiUnlocked ? "Unlocked" : "Locked";
 
     const modalDomPct = document.getElementById("modal-dom-pct");
     const modalDomFill = document.getElementById("modal-dom-fill");

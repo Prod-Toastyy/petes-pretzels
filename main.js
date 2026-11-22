@@ -1,18 +1,24 @@
 const THEME_STORAGE_KEY = "petes_pretzels_theme";
 
 const THEMES_CATALOG = [
-  { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0 },
-  { id: "terminal", name: "Midnight Terminal", minContinent: 0 },
-  { id: "copper", name: "Bavarian Copper", minContinent: 0 },
-  { id: "emerald", name: "Amazon Emerald", minContinent: 1, unlockLabel: "South America" },
-  { id: "indigo", name: "Royal Lye Indigo", minContinent: 2, unlockLabel: "Europe" },
-  { id: "sahara", name: "Sahara Gold", minContinent: 3, unlockLabel: "Africa" },
-  { id: "cyber", name: "Neon Tokyo Cyber", minContinent: 4, unlockLabel: "Asia" },
-  { id: "coral", name: "Coral Reef Teal", minContinent: 5, unlockLabel: "Oceania" },
-  { id: "glacial", name: "Glacial Cryo Frost", minContinent: 6, unlockLabel: "Antarctica" }
+  { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0, requiresGoldUi: false },
+  { id: "computer-green", name: "Computer Green", minContinent: 0, requiresGoldUi: false },
+  { id: "light-mode", name: "Light Mode", minContinent: 0, requiresGoldUi: false },
+  { id: "terminal", name: "Midnight Terminal", minContinent: 0, requiresGoldUi: false },
+  { id: "copper", name: "Bavarian Copper", minContinent: 0, requiresGoldUi: false },
+  { id: "emerald", name: "Amazon Emerald", minContinent: 1, unlockLabel: "South America", requiresGoldUi: false },
+  { id: "indigo", name: "Royal Lye Indigo", minContinent: 2, unlockLabel: "Europe", requiresGoldUi: false },
+  { id: "sahara", name: "Sahara Gold", minContinent: 3, unlockLabel: "Africa", requiresGoldUi: false },
+  { id: "cyber", name: "Neon Tokyo Cyber", minContinent: 4, unlockLabel: "Asia", requiresGoldUi: false },
+  { id: "coral", name: "Coral Reef Teal", minContinent: 5, unlockLabel: "Oceania", requiresGoldUi: false },
+  { id: "glacial", name: "Glacial Cryo Frost", minContinent: 6, unlockLabel: "Antarctica", requiresGoldUi: false },
+  { id: "gold-solid", name: "Solid Gold UI", minContinent: 7, unlockLabel: "Final World", requiresGoldUi: true }
 ];
 
 const ALL_THEME_CLASSES = [
+  "theme-computer-green",
+  "theme-light-mode",
+  "theme-gold-solid",
   "theme-terminal",
   "theme-copper",
   "theme-emerald",
@@ -68,17 +74,62 @@ function onClick(id, handler) {
   if (el) el.addEventListener("click", handler);
 }
 
+function triggerScreenShake() {
+  document.body.classList.remove("screen-shake");
+  void document.body.offsetWidth;
+  document.body.classList.add("screen-shake");
+  setTimeout(() => document.body.classList.remove("screen-shake"), 300);
+}
+
+function triggerConfettiStarBurst(centerX = window.innerWidth * 0.5, centerY = window.innerHeight * 0.4, count = 12) {
+  const stars = ["✦", "★", "✧", "*"];
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("span");
+    el.className = "confetti-star";
+    el.textContent = stars[i % stars.length];
+    el.style.left = `${centerX}px`;
+    el.style.top = `${centerY}px`;
+
+    const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.35);
+    const dist = 55 + Math.random() * 75;
+    el.style.setProperty("--cx", `${(Math.cos(angle) * dist).toFixed(1)}px`);
+    el.style.setProperty("--cy", `${(Math.sin(angle) * dist - 20).toFixed(1)}px`);
+
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 820);
+  }
+}
+
+function triggerLevel25Juice(elementId) {
+  triggerScreenShake();
+  const target = getEl(elementId);
+  if (target) {
+    const rect = target.getBoundingClientRect();
+    triggerConfettiStarBurst(rect.left + rect.width * 0.5, rect.top + rect.height * 0.4, 14);
+  } else {
+    triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.45, 14);
+  }
+}
+
+function isThemeUnlocked(themeObj) {
+  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  const hasGoldUi = typeof GameState !== "undefined" ? Boolean(GameState.goldUiUnlocked) : false;
+  if (themeObj.requiresGoldUi) {
+    return hasGoldUi || conqueredIdx >= themeObj.minContinent;
+  }
+  return conqueredIdx >= themeObj.minContinent;
+}
+
 function refreshThemeDropdown() {
   const select = getEl("select-theme");
   if (!select) return;
 
-  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
   const currentTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
   select.innerHTML = "";
 
   THEMES_CATALOG.forEach(t => {
     const opt = document.createElement("option");
-    const unlocked = conqueredIdx >= t.minContinent;
+    const unlocked = isThemeUnlocked(t);
     opt.value = t.id;
     opt.disabled = !unlocked;
     opt.textContent = unlocked
@@ -90,9 +141,8 @@ function refreshThemeDropdown() {
 }
 
 function applyTheme(themeId) {
-  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
   const themeObj = THEMES_CATALOG.find(t => t.id === themeId) || THEMES_CATALOG[0];
-  const safeTheme = conqueredIdx >= themeObj.minContinent ? themeObj : THEMES_CATALOG[0];
+  const safeTheme = isThemeUnlocked(themeObj) ? themeObj : THEMES_CATALOG[0];
 
   document.body.classList.remove(...ALL_THEME_CLASSES);
   if (safeTheme.id !== "espresso") {
@@ -184,18 +234,46 @@ window.startGameFromModal = function() {
   if (typeof GameState !== "undefined") {
     GameState.playerName = nameInput || "Baker";
     GameState.started = true;
+    if (!GameState.runStartTime) GameState.runStartTime = Date.now();
     if (typeof GameState.save === "function") {
       GameState.save(true);
     }
   }
 
   setText("display-player-name", nameInput || "Baker");
+  hideEl("title-intro-screen");
   hideEl("setup-modal");
 
   applySessionUI();
   logMessage(`Welcome, ${nameInput || "Baker"}. Kitchen is open.`);
   render();
 };
+
+function openEndingModal(records = {}) {
+  const goldCount = GameState.goldenPretzels || 0;
+  const runSecs = Math.floor(GameState.elapsedRunSeconds || 0);
+  const bestSecs = Math.floor(GameState.bestRunSeconds || runSecs);
+  const runPretzels = Math.floor(GameState.pretzels || 0);
+  const bestPretzels = Math.max(Math.floor(GameState.bestRunPretzels || 0), runPretzels);
+
+  setText("ending-player-name", GameState.playerName || "Baker");
+  setText("ending-run-time", formatDuration(runSecs));
+  setText("ending-best-time", bestSecs > 0 ? formatDuration(bestSecs) : formatDuration(runSecs));
+  setText("ending-run-pretzels", runPretzels.toLocaleString());
+  setText("ending-best-pretzels", bestPretzels.toLocaleString());
+  setText("ending-gold-pretzels", goldCount.toLocaleString());
+  setText("ending-gold-bonus", `+${goldCount * 25}%`);
+
+  if (records.isNewBestTime) showEl("ending-best-time-badge");
+  else hideEl("ending-best-time-badge");
+
+  if (records.isNewBestPretzels) showEl("ending-best-pretzels-badge");
+  else hideEl("ending-best-pretzels-badge");
+
+  triggerScreenShake();
+  triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.35, 18);
+  showEl("ending-modal");
+}
 
 const Projects = [
   {
@@ -638,7 +716,7 @@ const WHEAT_BASE_PAYROLL = 20.00;
 const REFINERY_BASE_PAYROLL = 45.00;
 
 const PLINKO_COLS = 19;
-const PLINKO_INNER_COLS = PLINKO_COLS - 2; // 17 inner positions (indices 0..16 -> board cols 1..17)
+const PLINKO_INNER_COLS = PLINKO_COLS - 2;
 const PLINKO_ROWS = 6;
 const PLINKO_COST = 50;
 const MAX_FALLING_PRETZELS = 3;
@@ -700,6 +778,12 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.continentIndex)) GameState.continentIndex = 0;
   if (!Number.isFinite(GameState.goldenPretzels)) GameState.goldenPretzels = 0;
   if (!Number.isFinite(GameState.lifetimePretzelsAllRuns)) GameState.lifetimePretzelsAllRuns = 0;
+  if (!Number.isFinite(GameState.runStartTime)) GameState.runStartTime = Date.now();
+  if (!Number.isFinite(GameState.elapsedRunSeconds)) GameState.elapsedRunSeconds = 0;
+  if (!Number.isFinite(GameState.bestRunSeconds)) GameState.bestRunSeconds = 0;
+  if (!Number.isFinite(GameState.bestRunPretzels)) GameState.bestRunPretzels = 0;
+  if (typeof GameState.goldUiUnlocked !== "boolean") GameState.goldUiUnlocked = false;
+  if (typeof GameState.endingSeenForRun !== "boolean") GameState.endingSeenForRun = false;
 
   if (!Number.isFinite(GameState.pretzels)) GameState.pretzels = 0;
   if (!Number.isFinite(GameState.inventory)) GameState.inventory = 0;
@@ -876,6 +960,7 @@ function bakePretzels(requestedAmount) {
   GameState.dough -= actualBaked;
   GameState.pretzels += actualBaked;
   GameState.inventory += actualBaked;
+  GameState.recordRunProgress(0);
   return actualBaked;
 }
 
@@ -962,8 +1047,6 @@ function getEvolvedAscii() {
 }
 
 function buildPlinkoBucketRow() {
-  // Inner width is PLINKO_INNER_COLS (17 chars between left '|' and right '|')
-  // Center index 8 corresponds to board column 9 ([★])
   const slots = Array(PLINKO_INNER_COLS).fill(" ");
   const putToken = (startIdx, token) => {
     for (let i = 0; i < token.length; i++) {
@@ -1185,6 +1268,7 @@ function resetRegionalPanelsUI() {
 function applySessionUI() {
   setText("display-player-name", GameState.playerName);
   setText("ascii-stage", getEvolvedAscii());
+  hideEl("title-intro-screen");
   hideEl("setup-modal");
 
   refreshThemeDropdown();
@@ -1216,9 +1300,54 @@ function applySessionUI() {
   }
 }
 
+function completeContinentExpansion() {
+  if (typeof AchievementManager === "undefined" || !AchievementManager.canExpandContinent()) return;
+
+  const prevIdx = GameState.continentIndex || 0;
+  const isFinalEarthContinent = prevIdx === (typeof CONTINENTS !== "undefined" ? CONTINENTS.length - 1 : 6);
+  const recordsBeforeReset = isFinalEarthContinent ? GameState.finalizeRunRecords() : {};
+  const { earnedGold, conqueringFinalWorld } = GameState.expandToNextContinent();
+  const newCont = GameState.getCurrentContinent();
+
+  resetRegionalPanelsUI();
+  updateDemand();
+  applySessionUI();
+  hideEl("achievements-modal");
+
+  if (conqueringFinalWorld) {
+    applyTheme("gold-solid");
+    logMessage(`EARTH CONQUERED! Unlocked Solid Gold UI & banked +${earnedGold} Golden Pretzels [🥨★]! Pete Pretzel sent a letter.`);
+    render();
+    openEndingModal(recordsBeforeReset);
+    return;
+  }
+
+  const unlockedTheme = THEMES_CATALOG.find(t => !t.requiresGoldUi && t.minContinent === (GameState.continentIndex || 0));
+  const themeNotice = unlockedTheme ? ` New Theme Unlocked: ${unlockedTheme.name}!` : "";
+  logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!${themeNotice}`);
+  render();
+}
+
 function bindControls() {
   if (controlsBound) return;
   controlsBound = true;
+
+  onClick("intro-pretzel-trigger", () => {
+    hideEl("title-intro-screen");
+    initSetupPicker();
+    showEl("setup-modal");
+  });
+
+  onClick("btn-continue-current-world", () => {
+    hideEl("ending-modal");
+  });
+
+  onClick("btn-prestige-next-loop", () => {
+    hideEl("ending-modal");
+    applyTheme("gold-solid");
+    logMessage("New Earth Prestige Loop started with Solid Gold UI and all Golden Pretzels intact!");
+    render();
+  });
 
   onClick("btn-bake", window.handleManualBake);
 
@@ -1305,6 +1434,7 @@ function bindControls() {
       const newTierInfo = getModuleTierInfo(GameState.saltMines);
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
+        if (GameState.saltMines === 25) triggerLevel25Juice("module-salt-mine");
       }
       GameState.save(true);
       render();
@@ -1335,6 +1465,7 @@ function bindControls() {
       const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
+        if (GameState.wheatFarms === 25) triggerLevel25Juice("module-wheat-farm");
       }
       GameState.save(true);
       render();
@@ -1365,6 +1496,7 @@ function bindControls() {
       const newTierInfo = getModuleTierInfo(GameState.refineries);
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
+        if (GameState.refineries === 25) triggerLevel25Juice("module-refinery");
       }
       showEl("refinery-rate-wrap");
       GameState.save(true);
@@ -1410,22 +1542,7 @@ function bindControls() {
     hideEl("achievements-modal");
   });
 
-  onClick("btn-expand-continent", () => {
-    if (typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent()) {
-      const earnedGold = GameState.expandToNextContinent();
-      const newCont = GameState.getCurrentContinent();
-      const unlockedTheme = THEMES_CATALOG.find(t => t.minContinent === (GameState.continentIndex || 0));
-
-      resetRegionalPanelsUI();
-      updateDemand();
-      applySessionUI();
-      hideEl("achievements-modal");
-
-      const themeNotice = unlockedTheme ? ` New Theme Unlocked: ${unlockedTheme.name}!` : "";
-      logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!${themeNotice}`);
-      render();
-    }
-  });
+  onClick("btn-expand-continent", completeContinentExpansion);
 
   onClick("player-badge", () => {
     refreshThemeDropdown();
@@ -1456,6 +1573,8 @@ function bindControls() {
     applyTheme("espresso");
     resetRegionalPanelsUI();
     hideEl("restart-modal");
+    hideEl("setup-modal");
+    hideEl("ending-modal");
 
     const nameInput = getEl("input-player-name");
     if (nameInput) nameInput.value = "";
@@ -1466,7 +1585,7 @@ function bindControls() {
     }
 
     initSetupPicker();
-    showEl("setup-modal");
+    showEl("title-intro-screen");
     render();
   });
 
@@ -1480,6 +1599,7 @@ function bindControls() {
       updateDemand();
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Marketing reached ${newTierInfo.label} Demand!`);
+        if (GameState.promoLevel === 25) triggerLevel25Juice("module-promo");
       } else {
         logMessage(`Marketing upgraded to Level ${GameState.promoLevel}!`);
       }
@@ -1522,6 +1642,7 @@ function bindControls() {
       const newTierInfo = getModuleTierInfo(GameState.extruders);
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
+        if (GameState.extruders === 25) triggerLevel25Juice("panel-automation");
       }
       GameState.save(true);
       render();
@@ -1537,6 +1658,7 @@ function bindControls() {
       const newTierInfo = getModuleTierInfo(GameState.trucks);
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
+        if (GameState.trucks === 25) triggerLevel25Juice("panel-trucks");
       }
       GameState.save(true);
       render();
@@ -1567,6 +1689,7 @@ function bindControls() {
       const newTierInfo = getModuleTierInfo(GameState.drones);
       if (newTierInfo.tier > prevTier) {
         logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
+        if (GameState.drones === 25) triggerLevel25Juice("panel-drones");
       }
       GameState.save(true);
       render();
@@ -1982,14 +2105,26 @@ async function bootGame() {
     } else {
       logMessage(`Welcome back, ${GameState.playerName}.`);
     }
+  } else {
+    hideEl("setup-modal");
+    showEl("title-intro-screen");
   }
 
   render();
   renderPlinkoBoard(true);
   requestAnimationFrame(animateMinigames);
 
+  let subsecondAccumulator = 0;
+
   setInterval(() => {
     if (!GameState.started) return;
+
+    subsecondAccumulator += 0.1;
+    if (subsecondAccumulator >= 1) {
+      const wholeSecs = Math.floor(subsecondAccumulator);
+      subsecondAccumulator -= wholeSecs;
+      GameState.recordRunProgress(wholeSecs);
+    }
 
     let tickNetCash = 0;
     let tickRefinedDough = 0;
@@ -2062,6 +2197,8 @@ async function bootGame() {
     } else {
       pendingSales = 0;
     }
+
+    GameState.recordRunProgress(0);
 
     const nowMs = Date.now();
     if (tickNetCash !== 0) {

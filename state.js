@@ -44,6 +44,14 @@ const DEFAULT_STATE = {
   selectedAsciiIndex: 0,
   lastTick: Date.now(),
 
+  // Run & Best Records
+  runStartTime: 0,
+  elapsedRunSeconds: 0,
+  bestRunSeconds: 0,
+  bestRunPretzels: 0,
+  goldUiUnlocked: false,
+  endingSeenForRun: false,
+
   // Global Conquest Prestige
   continentIndex: 0,
   goldenPretzels: 0,
@@ -171,14 +179,55 @@ const GameState = {
     return Math.round(baseNet * achBonus * goldBonus * rushMult * 100) / 100;
   },
 
+  recordRunProgress(addSeconds = 0) {
+    if (addSeconds > 0) {
+      this.elapsedRunSeconds = (this.elapsedRunSeconds || 0) + addSeconds;
+    }
+    const runPretzels = Math.floor(this.pretzels || 0);
+    if (runPretzels > (this.bestRunPretzels || 0)) {
+      this.bestRunPretzels = runPretzels;
+    }
+  },
+
+  finalizeRunRecords() {
+    this.recordRunProgress(0);
+    const currentSecs = Math.floor(this.elapsedRunSeconds || 0);
+    let isNewBestTime = false;
+    let isNewBestPretzels = false;
+
+    if (currentSecs > 0 && ((this.bestRunSeconds || 0) === 0 || currentSecs < this.bestRunSeconds)) {
+      this.bestRunSeconds = currentSecs;
+      isNewBestTime = true;
+    }
+    const runPretzels = Math.floor(this.pretzels || 0);
+    if (runPretzels >= (this.bestRunPretzels || 0) && runPretzels > 0) {
+      this.bestRunPretzels = runPretzels;
+      isNewBestPretzels = true;
+    }
+
+    return { isNewBestTime, isNewBestPretzels };
+  },
+
   expandToNextContinent() {
+    const prevContinentIdx = this.continentIndex || 0;
+    const conqueringFinalWorld = prevContinentIdx === CONTINENTS.length - 1;
     const earnedGold = this.calculatePendingGoldenPretzels();
+
     const preservedName = this.playerName;
     const preservedAscii = this.selectedAsciiIndex;
     const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
-    const nextContinentIdx = (this.continentIndex || 0) + 1;
+    const nextContinentIdx = prevContinentIdx + 1;
     const totalGold = (this.goldenPretzels || 0) + earnedGold;
+    const unlockedGoldUi = Boolean(this.goldUiUnlocked || conqueringFinalWorld);
+
+    const runSecs = Math.floor(this.elapsedRunSeconds || 0);
+    const runPretzels = Math.floor(this.pretzels || 0);
+    let nextBestSecs = this.bestRunSeconds || 0;
+    if (conqueringFinalWorld && runSecs > 0 && (nextBestSecs === 0 || runSecs < nextBestSecs)) {
+      nextBestSecs = runSecs;
+    }
+    const nextBestPretzels = Math.max(this.bestRunPretzels || 0, runPretzels);
 
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
 
@@ -189,6 +238,11 @@ const GameState = {
     this.lifetimePretzelsAllRuns = totalLifetime;
     this.continentIndex = nextContinentIdx;
     this.goldenPretzels = totalGold;
+    this.goldUiUnlocked = unlockedGoldUi;
+    this.bestRunSeconds = nextBestSecs;
+    this.bestRunPretzels = nextBestPretzels;
+    this.runStartTime = Date.now();
+    this.elapsedRunSeconds = 0;
 
     const scale = this.getCurrentContinent().costScale;
     this.doughCost = Math.round(12.00 * scale * 100) / 100;
@@ -201,7 +255,7 @@ const GameState = {
     this.refineryCost = Math.round(8500.00 * scale * 100) / 100;
 
     this.save(true);
-    return earnedGold;
+    return { earnedGold, conqueringFinalWorld };
   },
 
   getSnapshot() {
@@ -221,11 +275,17 @@ const GameState = {
       }
     }
 
+    if (!this.runStartTime) this.runStartTime = Date.now();
+
     const batchSize = this.doughBatchSize || 500;
     const now = Date.now();
     const rawElapsed = Math.floor((now - (this.lastTick || now)) / 1000);
     const elapsedSeconds = Math.min(Math.max(0, rawElapsed), MAX_OFFLINE_SECONDS);
     this.lastTick = now;
+
+    if (this.started && elapsedSeconds > 0) {
+      this.recordRunProgress(elapsedSeconds);
+    }
 
     if (this.started && elapsedSeconds > 5) {
       const potentialBake = this.extruders * this.extruderSpeed * elapsedSeconds;
@@ -246,6 +306,7 @@ const GameState = {
       const sold = Math.min(this.inventory, maxSell);
       this.inventory -= sold;
       this.funds += sold * this.getEffectivePrice();
+      this.recordRunProgress(0);
 
       return elapsedSeconds;
     }
