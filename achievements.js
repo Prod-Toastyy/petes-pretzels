@@ -223,7 +223,12 @@ function getLeaderboardClient() {
   if (cachedAnonLeaderboardClient) return cachedAnonLeaderboardClient;
   if (typeof SUPABASE_URL !== "undefined" && typeof SUPABASE_ANON_KEY !== "undefined" && window.supabase?.createClient) {
     cachedAnonLeaderboardClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false }
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: "petes_pretzels_leaderboard_auth_v1"
+      }
     });
     return cachedAnonLeaderboardClient;
   }
