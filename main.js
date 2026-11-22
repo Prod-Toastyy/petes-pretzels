@@ -12,6 +12,27 @@ function applyTheme(themeId) {
   localStorage.setItem(THEME_STORAGE_KEY, themeId || "espresso");
 }
 
+// Milestone Module Color Staging (10 / 25 / 50 / 100 thresholds)
+function getModuleTierInfo(count) {
+  if (count >= 100) return { tier: 4, label: "TIER IV • 5x", mult: 5.0, next: null };
+  if (count >= 50)  return { tier: 3, label: "TIER III • 3x", mult: 3.0, next: 100 };
+  if (count >= 25)  return { tier: 2, label: "TIER II • 2x", mult: 2.0, next: 50 };
+  if (count >= 10)  return { tier: 1, label: "TIER I • 1.5x", mult: 1.5, next: 25 };
+  return { tier: 0, label: "BASE • 1x", mult: 1.0, next: 10 };
+}
+
+function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "") {
+  const info = getModuleTierInfo(count);
+  const box = document.getElementById(boxId);
+  if (box) {
+    box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
+    if (info.tier > 0) box.classList.add(`tier-${info.tier}`);
+  }
+  setText(badgeId, info.label);
+  setText(nextId, info.next ? `Next: ${prefix}${info.next}` : "MAX TIER");
+  return info;
+}
+
 const FALLBACK_ASCII = [
   "   .-'```'-.   \n  /  .---.  \\  \n |  (  X  )  | \n  \\  '---'  /  \n   '-.___.-'   ",
   "   _.-'''-._   \n  / * .-. * \\  \n ( * (   ) * ) \n  \\ * '-' * /  \n   '-.....-'   ",
@@ -309,6 +330,21 @@ const Projects = [
     }
   },
   {
+    id: "unlock_supply_chain",
+    icon: "[⛓️]",
+    title: "Vertical Supply Chain Charter",
+    desc: "Unlocks Rock Salt Mines, Winter Wheat Fields, and Dough Refineries to produce dough in-house.",
+    cashCost: 5000,
+    rpCost: 25,
+    trigger: () => GameState.unlockedMinigame && GameState.pretzels >= 10000 && (GameState.doughPurchases >= 8 || GameState.doughCost >= 18),
+    effect: () => {
+      GameState.unlockedSupplyChain = true;
+      GameState.supplyChainEnabled = true;
+      showEl("system-supply-chain");
+      logMessage("Vertical Supply Chain unlocked! Open Mines, Fields & Refineries.");
+    }
+  },
+  {
     id: "dough_pipeline",
     icon: "[🏭]",
     title: "Industrial Flour Pipeline",
@@ -466,6 +502,14 @@ let lastAnimTime = null;
 let lastShotTime = 0;
 let controlsBound = false;
 
+// Supply Chain Base Constants
+const SALT_BASE_RATE = 40;
+const WHEAT_BASE_RATE = 60;
+const REFINERY_BASE_RATE = 80;
+const SALT_PAYROLL_PER_UNIT = 2.50;
+const WHEAT_PAYROLL_PER_UNIT = 4.00;
+const REFINERY_PAYROLL_PER_UNIT = 8.50;
+
 // ASCII Plinko State (15 columns wide: indices 0..14)
 const PLINKO_COLS = 15;
 const PLINKO_ROWS = 6;
@@ -561,6 +605,19 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.doughPurchases)) GameState.doughPurchases = 0;
   if (!Number.isFinite(GameState.kneadClicks)) GameState.kneadClicks = 0;
   if (!Number.isFinite(GameState.handMadeDoughTotal)) GameState.handMadeDoughTotal = 0;
+
+  // Supply Chain defaults
+  if (typeof GameState.unlockedSupplyChain !== "boolean") GameState.unlockedSupplyChain = false;
+  if (typeof GameState.supplyChainEnabled !== "boolean") GameState.supplyChainEnabled = true;
+  if (!Number.isFinite(GameState.salt)) GameState.salt = 0;
+  if (!Number.isFinite(GameState.wheat)) GameState.wheat = 0;
+  if (!Number.isFinite(GameState.saltMines)) GameState.saltMines = 0;
+  if (!Number.isFinite(GameState.saltMineCost) || GameState.saltMineCost <= 0) GameState.saltMineCost = 2500.00;
+  if (!Number.isFinite(GameState.wheatFarms)) GameState.wheatFarms = 0;
+  if (!Number.isFinite(GameState.wheatFarmCost) || GameState.wheatFarmCost <= 0) GameState.wheatFarmCost = 4000.00;
+  if (!Number.isFinite(GameState.refineries)) GameState.refineries = 0;
+  if (!Number.isFinite(GameState.refineryCost) || GameState.refineryCost <= 0) GameState.refineryCost = 8500.00;
+
   if (!Number.isFinite(GameState.promoLevel) || GameState.promoLevel < 1) GameState.promoLevel = 1;
   if (!Number.isFinite(GameState.promoCost) || GameState.promoCost <= 0) GameState.promoCost = 50.00;
   if (!Number.isFinite(GameState.price) || GameState.price <= 0) GameState.price = 0.50;
@@ -602,6 +659,27 @@ function getEffectivePriceSafe() {
   const achBonus = 1 + ((GameState.unlockedAchievements?.length || 0) * 0.01);
   const rushMult = Date.now() < (GameState.goldenRushEndTime || 0) ? 2.0 : 1.0;
   return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * rushMult * 100) / 100;
+}
+
+function getEffectiveBakeRate() {
+  if (GameState.dough <= 0) return 0;
+  const tierMult = getModuleTierInfo(GameState.extruders).mult;
+  return GameState.extruders * GameState.extruderSpeed * tierMult;
+}
+
+function getEffectiveMaxDelivery() {
+  const truckMult = getModuleTierInfo(GameState.trucks).mult;
+  const droneMult = getModuleTierInfo(GameState.drones).mult;
+  return 1
+    + (GameState.trucks * GameState.truckCapacity * truckMult)
+    + (GameState.drones * GameState.droneCapacity * droneMult);
+}
+
+function getSupplyPayrollPerSec() {
+  if (!GameState.unlockedSupplyChain || !GameState.supplyChainEnabled) return 0;
+  return (GameState.saltMines * SALT_PAYROLL_PER_UNIT)
+    + (GameState.wheatFarms * WHEAT_PAYROLL_PER_UNIT)
+    + (GameState.refineries * REFINERY_PAYROLL_PER_UNIT);
 }
 
 function getTruckSellValue() {
@@ -688,8 +766,8 @@ function refreshRecipeDropdown() {
 
 function updateDemand() {
   const recipe = getSafeRecipe();
-  const promoMult = 1 + ((GameState.promoLevel - 1) * 0.20);
-  // Universal Paperclips-style elasticity curve (1 / price^1.18) creates a real price sweet spot
+  const promoTierMult = getModuleTierInfo(GameState.promoLevel).mult;
+  const promoMult = (1 + ((GameState.promoLevel - 1) * 0.20)) * promoTierMult;
   const priceElasticity = Math.pow(0.50 / GameState.price, 1.18);
   const rawDemand = priceElasticity * 100 * GameState.demandBonus * recipe.demandMult * promoMult;
   GameState.demand = Math.max(1, Math.round(rawDemand));
@@ -717,7 +795,6 @@ function renderPlinkoBoard() {
   const lines = [];
   const dropCol = Math.round(plinkoDropperPos);
 
-  // Top dropper row
   let topRow = Array(PLINKO_COLS).fill(" ");
   if (!plinkoBall) {
     topRow[dropCol] = "▼";
@@ -726,7 +803,6 @@ function renderPlinkoBoard() {
   }
   lines.push(" " + topRow.join("") + " ");
 
-  // 5 Peg rows (rows 1..5)
   for (let r = 1; r < PLINKO_ROWS; r++) {
     let rowChars = Array(PLINKO_COLS).fill(" ");
     for (let c = 1; c < PLINKO_COLS - 1; c++) {
@@ -740,7 +816,6 @@ function renderPlinkoBoard() {
     lines.push("|" + rowChars.join("") + "|");
   }
 
-  // Bottom 5 buckets (exact center col 7 is the rare [★] jackpot)
   lines.push("[X] [🌾] [★] [🌾] [X]");
   boardEl.textContent = lines.join("\n");
 }
@@ -766,19 +841,16 @@ function dropPlinkoPretzel() {
 
 function resolvePlinkoBucket(finalCol) {
   if (finalCol === 7) {
-    // Exact center column: rare 30s Golden Rush jackpot!
     GameState.goldenRushEndTime = Date.now() + 30000;
     setText("plinko-feedback", "RARE JACKPOT [★]! 30s GOLDEN RUSH!");
     logMessage("GOLDEN RUSH! 2x Cash & rare Golden Pretzels for 30s!");
     spawnFallingGoldenPretzel();
   } else if (finalCol >= 3 && finalCol <= 11) {
-    // Inner buckets: Free Dough!
     const freeDough = Math.max(250, Math.round((GameState.doughBatchSize || 500) * 0.5));
     GameState.dough += freeDough;
     setText("plinko-feedback", `LANDED IN [🌾]: Won +${freeDough.toLocaleString()} lbs Dough!`);
     logMessage(`Plinko Winner! Won +${freeDough.toLocaleString()} lbs of fresh dough.`);
   } else {
-    // Outer buckets: Burnt pretzel (nothing)
     setText("plinko-feedback", "LANDED IN [X]: Burnt pretzel! Nothing won.");
     logMessage("Plinko: Pretzel landed in the burnt [X] slot.");
   }
@@ -806,7 +878,7 @@ function spawnFallingGoldenPretzel() {
     if (collected) return;
     collected = true;
 
-    const bakeRate = GameState.getBakeRate ? GameState.getBakeRate() : (GameState.extruders * GameState.extruderSpeed);
+    const bakeRate = getEffectiveBakeRate();
     const reward = Math.max(
       25,
       Math.round(bakeRate * 15),
@@ -896,6 +968,7 @@ function applySessionUI() {
   if (GameState.unlockedIncomeTicker) showEl("income-rate-line");
   if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
   if (GameState.unlockedAutomation) showEl("panel-automation");
+  if (GameState.unlockedSupplyChain) showEl("system-supply-chain");
   if (GameState.unlockedTrucks || GameState.unlockedDrones) showEl("system-delivery");
   if (GameState.unlockedTrucks) showEl("panel-trucks");
   if (GameState.unlockedDrones) showEl("panel-drones");
@@ -928,6 +1001,57 @@ function bindControls() {
   onClick("btn-toggle-autodough", () => {
     GameState.autoDoughEnabled = !GameState.autoDoughEnabled;
     render();
+  });
+
+  onClick("btn-toggle-supply", () => {
+    GameState.supplyChainEnabled = !GameState.supplyChainEnabled;
+    logMessage(`Supply Chain workers ${GameState.supplyChainEnabled ? "resumed" : "paused"}.`);
+    render();
+  });
+
+  onClick("btn-buy-salt-mine", () => {
+    if (GameState.funds >= GameState.saltMineCost) {
+      const prevTier = getModuleTierInfo(GameState.saltMines).tier;
+      GameState.funds -= GameState.saltMineCost;
+      GameState.saltMines += 1;
+      GameState.saltMineCost = Math.round(GameState.saltMineCost * 1.45 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.saltMines);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
+      }
+      GameState.save();
+      render();
+    }
+  });
+
+  onClick("btn-buy-wheat-farm", () => {
+    if (GameState.funds >= GameState.wheatFarmCost) {
+      const prevTier = getModuleTierInfo(GameState.wheatFarms).tier;
+      GameState.funds -= GameState.wheatFarmCost;
+      GameState.wheatFarms += 1;
+      GameState.wheatFarmCost = Math.round(GameState.wheatFarmCost * 1.45 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
+      }
+      GameState.save();
+      render();
+    }
+  });
+
+  onClick("btn-buy-refinery", () => {
+    if (GameState.funds >= GameState.refineryCost) {
+      const prevTier = getModuleTierInfo(GameState.refineries).tier;
+      GameState.funds -= GameState.refineryCost;
+      GameState.refineries += 1;
+      GameState.refineryCost = Math.round(GameState.refineryCost * 1.50 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.refineries);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
+      }
+      GameState.save();
+      render();
+    }
   });
 
   onClick("btn-knead-dough", () => {
@@ -984,10 +1108,12 @@ function bindControls() {
     hideEl("golden-rush-badge");
     hideEl("restart-modal");
     hideEl("income-rate-line");
+    hideEl("payroll-rate-line");
     hideEl("recipe-box");
     hideEl("btn-toggle-autodough");
     hideEl("panel-hand-dough");
     hideEl("panel-automation");
+    hideEl("system-supply-chain");
     hideEl("system-delivery");
     hideEl("panel-trucks");
     hideEl("panel-drones");
@@ -1014,11 +1140,17 @@ function bindControls() {
 
   onClick("btn-buy-promo", () => {
     if (GameState.funds >= GameState.promoCost) {
+      const prevTier = getModuleTierInfo(GameState.promoLevel).tier;
       GameState.funds -= GameState.promoCost;
       GameState.promoLevel += 1;
       GameState.promoCost = Math.round(GameState.promoCost * 1.75 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.promoLevel);
       updateDemand();
-      logMessage(`Marketing upgraded to Level ${GameState.promoLevel} (+20% Demand)!`);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Marketing reached ${newTierInfo.label} Demand!`);
+      } else {
+        logMessage(`Marketing upgraded to Level ${GameState.promoLevel}!`);
+      }
       GameState.save();
       render();
     }
@@ -1051,9 +1183,14 @@ function bindControls() {
 
   onClick("btn-buy-extruder", () => {
     if (GameState.funds >= GameState.extruderCost) {
+      const prevTier = getModuleTierInfo(GameState.extruders).tier;
       GameState.funds -= GameState.extruderCost;
       GameState.extruders += 1;
       GameState.extruderCost = Math.round(GameState.extruderCost * 1.42 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.extruders);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
+      }
       GameState.save();
       render();
     }
@@ -1061,9 +1198,14 @@ function bindControls() {
 
   onClick("btn-buy-truck", () => {
     if (GameState.funds >= GameState.truckCost) {
+      const prevTier = getModuleTierInfo(GameState.trucks).tier;
       GameState.funds -= GameState.truckCost;
       GameState.trucks += 1;
       GameState.truckCost = Math.round(GameState.truckCost * 1.48 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.trucks);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
+      }
       GameState.save();
       render();
     }
@@ -1085,9 +1227,14 @@ function bindControls() {
 
   onClick("btn-buy-drone", () => {
     if (GameState.funds >= GameState.droneCost) {
+      const prevTier = getModuleTierInfo(GameState.drones).tier;
       GameState.funds -= GameState.droneCost;
       GameState.drones += 1;
       GameState.droneCost = Math.round(GameState.droneCost * 1.55 * 100) / 100;
+      const newTierInfo = getModuleTierInfo(GameState.drones);
+      if (newTierInfo.tier > prevTier) {
+        logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
+      }
       GameState.save();
       render();
     }
@@ -1180,8 +1327,17 @@ function checkUnlocks() {
 }
 
 function render() {
-  const bakeRate = GameState.dough > 0 ? (GameState.extruders * GameState.extruderSpeed) : 0;
-  const maxDelivery = 1 + (GameState.trucks * GameState.truckCapacity) + (GameState.drones * GameState.droneCapacity);
+  const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ");
+  const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders);
+  const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks);
+  const droneTier = applyModuleTierUI("panel-drones", "drone-tier-badge", "drone-next", GameState.drones);
+
+  const saltTier = applyModuleTierUI("module-salt-mine", "salt-mine-tier-badge", "salt-mine-next", GameState.saltMines);
+  const wheatTier = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms);
+  const refineryTier = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries);
+
+  const bakeRate = getEffectiveBakeRate();
+  const maxDelivery = getEffectiveMaxDelivery();
   const effectiveDelivery = maxDelivery * (GameState.demand / 100);
   const netPrice = getEffectivePriceSafe();
   const formattedFunds = GameState.funds.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1219,6 +1375,42 @@ function render() {
   if (GameState.unlockedIncomeTicker) {
     showEl("income-rate-line");
     setText("income-per-sec", liveCashPerSec.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  }
+
+  // Worker Payroll display
+  const payrollPerSec = getSupplyPayrollPerSec();
+  if (GameState.unlockedSupplyChain && payrollPerSec > 0) {
+    showEl("payroll-rate-line");
+    setText("payroll-per-sec", payrollPerSec.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  } else {
+    hideEl("payroll-rate-line");
+  }
+
+  // Supply Chain UI
+  if (GameState.unlockedSupplyChain) {
+    showEl("system-supply-chain");
+    setText("salt-stock", Math.floor(GameState.salt).toLocaleString());
+    setText("wheat-stock", Math.floor(GameState.wheat).toLocaleString());
+
+    const toggleSupplyBtn = document.getElementById("btn-toggle-supply");
+    if (toggleSupplyBtn) {
+      toggleSupplyBtn.textContent = `Operations: ${GameState.supplyChainEnabled ? "ON" : "OFF"}`;
+    }
+
+    setText("salt-mine-count", GameState.saltMines);
+    setText("salt-mine-cost", GameState.saltMineCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setText("salt-mine-rate", (SALT_BASE_RATE * saltTier.mult).toLocaleString());
+    setDisabled("btn-buy-salt-mine", GameState.funds < GameState.saltMineCost);
+
+    setText("wheat-farm-count", GameState.wheatFarms);
+    setText("wheat-farm-cost", GameState.wheatFarmCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setText("wheat-farm-rate", (WHEAT_BASE_RATE * wheatTier.mult).toLocaleString());
+    setDisabled("btn-buy-wheat-farm", GameState.funds < GameState.wheatFarmCost);
+
+    setText("refinery-count", GameState.refineries);
+    setText("refinery-cost", GameState.refineryCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setText("refinery-rate", (REFINERY_BASE_RATE * refineryTier.mult).toLocaleString());
+    setDisabled("btn-buy-refinery", GameState.funds < GameState.refineryCost);
   }
 
   const canAffordDough = GameState.funds >= GameState.doughCost;
@@ -1261,9 +1453,10 @@ function render() {
     autoBtn.textContent = `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`;
   }
 
+  const totalPromoPct = Math.round(((1 + (GameState.promoLevel - 1) * 0.20) * promoTier.mult - 1) * 100);
   setText("promo-level", GameState.promoLevel);
   setText("promo-cost", GameState.promoCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  setText("promo-bonus", `+${(GameState.promoLevel - 1) * 20}%`);
+  setText("promo-bonus", `+${totalPromoPct}%`);
   setDisabled("btn-buy-promo", GameState.funds < GameState.promoCost);
 
   setText("bake-rate", bakeRate.toLocaleString());
@@ -1271,14 +1464,14 @@ function render() {
 
   setText("extruder-count", GameState.extruders);
   setText("extruder-cost", GameState.extruderCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  setText("extruder-rate", GameState.extruderSpeed);
+  setText("extruder-rate", (GameState.extruderSpeed * extruderTier.mult).toLocaleString());
   setDisabled("btn-buy-extruder", GameState.funds < GameState.extruderCost);
 
   const truckSellVal = getTruckSellValue();
   setText("truck-count", GameState.trucks);
   setText("truck-cost", GameState.truckCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setText("truck-sell-val", truckSellVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  setText("truck-rate", GameState.truckCapacity);
+  setText("truck-rate", (GameState.truckCapacity * truckTier.mult).toLocaleString());
   setDisabled("btn-buy-truck", GameState.funds < GameState.truckCost);
   setDisabled("btn-sell-truck", GameState.trucks <= 0);
 
@@ -1286,7 +1479,7 @@ function render() {
   setText("drone-count", GameState.drones);
   setText("drone-cost", GameState.droneCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   setText("drone-sell-val", droneSellVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  setText("drone-rate", GameState.droneCapacity);
+  setText("drone-rate", (GameState.droneCapacity * droneTier.mult).toLocaleString());
   setDisabled("btn-buy-drone", GameState.funds < GameState.droneCost);
   setDisabled("btn-sell-drone", GameState.drones <= 0);
 
@@ -1350,7 +1543,6 @@ function animateMinigames(timestamp) {
           plinkoStepTimer = 0;
           plinkoBall.row += 1;
 
-          // Slight outward drift near center so exact col 7 [★] is a true rare jackpot
           let leftChance = 0.5;
           if (plinkoBall.col === 6) leftChance = 0.68;
           else if (plinkoBall.col === 8) leftChance = 0.32;
@@ -1405,13 +1597,38 @@ function bootGame() {
   setInterval(() => {
     if (!GameState.started) return;
 
+    // Vertical Supply Chain & Worker Payroll Tick
+    if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
+      const tickPayroll = getSupplyPayrollPerSec() / 10;
+      if (tickPayroll > 0 && GameState.funds >= tickPayroll) {
+        GameState.funds -= tickPayroll;
+
+        const saltMult = getModuleTierInfo(GameState.saltMines).mult;
+        const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult;
+        const refineryMult = getModuleTierInfo(GameState.refineries).mult;
+
+        GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) / 10;
+        GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) / 10;
+
+        if (GameState.refineries > 0) {
+          const maxRefineCapacity = (GameState.refineries * REFINERY_BASE_RATE * refineryMult) / 10;
+          const actualRefined = Math.min(maxRefineCapacity, GameState.salt, GameState.wheat);
+          if (actualRefined > 0) {
+            GameState.salt -= actualRefined;
+            GameState.wheat -= actualRefined;
+            GameState.dough += actualRefined;
+          }
+        }
+      }
+    }
+
     const batchSize = GameState.doughBatchSize || 500;
     const autoThreshold = Math.max(100, batchSize * 0.25);
     if (GameState.unlockedAutoDough && GameState.autoDoughEnabled && GameState.dough < autoThreshold) {
       buyDoughBatch(true);
     }
 
-    const rawBakeRate = GameState.extruders * GameState.extruderSpeed;
+    const rawBakeRate = getEffectiveBakeRate();
     if (rawBakeRate > 0 && GameState.dough > 0) {
       bakePretzels(rawBakeRate / 10);
     }
@@ -1419,7 +1636,7 @@ function bootGame() {
     let tickCashEarned = 0;
 
     if (GameState.inventory > 0) {
-      const maxDelivery = 1 + (GameState.trucks * GameState.truckCapacity) + (GameState.drones * GameState.droneCapacity);
+      const maxDelivery = getEffectiveMaxDelivery();
       const demandFactor = GameState.demand / 100;
       const netPrice = getEffectivePriceSafe();
       pendingSales += (maxDelivery * demandFactor) / 10;

@@ -118,7 +118,7 @@
     <pre id="ascii-stage"></pre>
   </header>
 
-  <!-- 3 Horizontal Rows (Zero Scrolling) -->
+  <!-- Main Horizontal Rows -->
   <main class="rows-container">
     
     <!-- Row 1: Production -->
@@ -130,6 +130,7 @@
           <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
           <p class="big-stat-line">Unsold Inventory: <strong id="inventory" class="big-stat-num">0</strong></p>
           <p id="income-rate-line" class="income-rate-line hidden">Cash Flow: <strong>+$<span id="income-per-sec">0.00</span>/sec</strong></p>
+          <p id="payroll-rate-line" class="payroll-rate-line hidden">Worker Payroll: <strong>-$<span id="payroll-per-sec">0.00</span>/sec</strong></p>
           <div id="recipe-box" class="recipe-row hidden">
             <label for="select-recipe" class="subtext">Menu:</label>
             <select id="select-recipe"></select>
@@ -159,47 +160,101 @@
           <p class="subtext">Public Demand: <span id="demand">100</span>%</p>
         </div>
 
-        <div class="module-box">
-          <p>[📣] Marketing: <strong>Lvl <span id="promo-level">1</span></strong></p>
+        <div class="module-box" id="module-promo">
+          <div class="module-head">
+            <p>[📣] Marketing: <strong>Lvl <span id="promo-level">1</span></strong></p>
+            <span id="promo-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
           <button id="btn-buy-promo">Promote Bakery ($<span id="promo-cost">50.00</span>)</button>
-          <p class="subtext">+20% Demand per level (<span id="promo-bonus">+0%</span>)</p>
+          <p class="subtext">+20% Demand/lvl (<span id="promo-bonus">+0%</span>) • <span id="promo-next">Next: Lvl 10</span></p>
         </div>
 
         <div class="module-box hidden" id="panel-automation">
-          <button id="btn-buy-extruder">[⚙️] Auto-Extruder (<span id="extruder-count">0</span>)</button>
-          <p class="subtext">Cost: $<span id="extruder-cost">15.00</span> | +<span id="extruder-rate">1</span>/sec each</p>
+          <div class="module-head">
+            <p><strong>[⚙️] Auto-Extruders: <span id="extruder-count">0</span></strong></p>
+            <span id="extruder-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
+          <button id="btn-buy-extruder">Buy Extruder ($<span id="extruder-cost">15.00</span>)</button>
+          <p class="subtext">+<span id="extruder-rate">1</span>/sec each • <span id="extruder-next">Next: 10</span></p>
         </div>
 
       </div>
     </section>
 
-    <!-- Row 2: Delivery -->
+    <!-- Row 2: Vertical Supply Chain (Unlocked via R&D) -->
+    <section class="row-panel hidden" id="system-supply-chain">
+      <div class="row-header">
+        <h2>[⛓️] Supply Chain & Workers</h2>
+        <div class="supply-header-right">
+          <span class="supply-stock-pill">Salt: <strong id="salt-stock">0</strong> lbs | Wheat: <strong id="wheat-stock">0</strong> lbs</span>
+          <button type="button" id="btn-toggle-supply" class="close-small-btn">Operations: ON</button>
+        </div>
+      </div>
+      <div class="row-items">
+
+        <div class="module-box" id="module-salt-mine">
+          <div class="module-head">
+            <p><strong>[⛏️] Rock Salt Mines: <span id="salt-mine-count">0</span></strong></p>
+            <span id="salt-mine-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
+          <button id="btn-buy-salt-mine">Open Mine ($<span id="salt-mine-cost">2,500.00</span>)</button>
+          <p class="subtext">+<span id="salt-mine-rate">40</span> lbs salt/sec • Payroll: -$2.50/sec • <span id="salt-mine-next">Next: 10</span></p>
+        </div>
+
+        <div class="module-box" id="module-wheat-farm">
+          <div class="module-head">
+            <p><strong>[🌾] Winter Wheat Fields: <span id="wheat-farm-count">0</span></strong></p>
+            <span id="wheat-farm-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
+          <button id="btn-buy-wheat-farm">Plant Field ($<span id="wheat-farm-cost">4,000.00</span>)</button>
+          <p class="subtext">+<span id="wheat-farm-rate">60</span> lbs wheat/sec • Payroll: -$4.00/sec • <span id="wheat-farm-next">Next: 10</span></p>
+        </div>
+
+        <div class="module-box" id="module-refinery">
+          <div class="module-head">
+            <p><strong>[🏭] Dough Refineries: <span id="refinery-count">0</span></strong></p>
+            <span id="refinery-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
+          <button id="btn-buy-refinery">Build Refinery ($<span id="refinery-cost">8,500.00</span>)</button>
+          <p class="subtext">Refines <span id="refinery-rate">80</span> lbs/sec (1 Salt + 1 Wheat) • Payroll: -$8.50/sec • <span id="refinery-next">Next: 10</span></p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Row 3: Delivery -->
     <section class="row-panel hidden" id="system-delivery">
       <h2>[⛟] Delivery</h2>
       <div class="row-items">
         
         <div class="module-box hidden" id="panel-trucks">
-          <p><strong>[🚚] Delivery Trucks: <span id="truck-count">0</span></strong></p>
+          <div class="module-head">
+            <p><strong>[🚚] Delivery Trucks: <span id="truck-count">0</span></strong></p>
+            <span id="truck-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
           <div class="btn-row">
             <button id="btn-buy-truck">Buy ($<span id="truck-cost">250.00</span>)</button>
             <button id="btn-sell-truck" class="sell-btn" disabled>Sell (+$<span id="truck-sell-val">0.00</span>)</button>
           </div>
-          <p class="subtext">Delivers <span id="truck-rate">8</span> pretzels/sec each</p>
+          <p class="subtext"><span id="truck-rate">8</span> pretzels/sec each • <span id="truck-next">Next: 10</span></p>
         </div>
 
         <div class="module-box hidden" id="panel-drones">
-          <p><strong>[🛸] Pretzel Drones: <span id="drone-count">0</span></strong></p>
+          <div class="module-head">
+            <p><strong>[🛸] Pretzel Drones: <span id="drone-count">0</span></strong></p>
+            <span id="drone-tier-badge" class="tier-badge">BASE • 1x</span>
+          </div>
           <div class="btn-row">
             <button id="btn-buy-drone">Buy ($<span id="drone-cost">5000.00</span>)</button>
             <button id="btn-sell-drone" class="sell-btn" disabled>Sell (+$<span id="drone-sell-val">0.00</span>)</button>
           </div>
-          <p class="subtext">Delivers <span id="drone-rate">75</span> pretzels/sec each</p>
+          <p class="subtext"><span id="drone-rate">75</span> pretzels/sec each • <span id="drone-next">Next: 10</span></p>
         </div>
 
       </div>
     </section>
 
-    <!-- Row 3: R&D -->
+    <!-- Row 4: R&D -->
     <section class="row-panel hidden" id="panel-projects">
       <div class="row-header">
         <h2>[⚗] R&D</h2>

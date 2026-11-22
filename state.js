@@ -48,6 +48,18 @@ const DEFAULT_STATE = {
   kneadClicks: 0,
   handMadeDoughTotal: 0,
 
+  // Vertical Supply Chain (Late-Game In-House Dough)
+  unlockedSupplyChain: false,
+  supplyChainEnabled: true,
+  salt: 0,
+  wheat: 0,
+  saltMines: 0,
+  saltMineCost: 2500.00,
+  wheatFarms: 0,
+  wheatFarmCost: 4000.00,
+  refineries: 0,
+  refineryCost: 8500.00,
+
   promoLevel: 1,
   promoCost: 50.00,
 
