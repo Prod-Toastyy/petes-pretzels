@@ -35,6 +35,42 @@ const RECIPES = {
     name: "Jalapeño Cheddar",
     priceMult: 4.0,
     demandMult: 1.40
+  },
+  dulce: {
+    id: "dulce",
+    name: "Dulce de Leche Glaze",
+    priceMult: 6.5,
+    demandMult: 1.55
+  },
+  truffle: {
+    id: "truffle",
+    name: "Alpine Truffle & Gruyère",
+    priceMult: 10.0,
+    demandMult: 1.70
+  },
+  berbere: {
+    id: "berbere",
+    name: "Spiced Berbere Cheddar",
+    priceMult: 16.0,
+    demandMult: 1.85
+  },
+  matcha: {
+    id: "matcha",
+    name: "Matcha & Yuzu Honey",
+    priceMult: 25.0,
+    demandMult: 2.05
+  },
+  macadamia: {
+    id: "macadamia",
+    name: "Macadamia Salted Caramel",
+    priceMult: 40.0,
+    demandMult: 2.30
+  },
+  glacier: {
+    id: "glacier",
+    name: "Crystalline Glacier Salt",
+    priceMult: 65.0,
+    demandMult: 2.60
   }
 };
 
@@ -78,10 +114,13 @@ const DEFAULT_STATE = {
   wheat: 0,
   saltMines: 0,
   saltMineCost: 2500.00,
+  saltRateMult: 1,
   wheatFarms: 0,
   wheatFarmCost: 4000.00,
+  wheatRateMult: 1,
   refineries: 0,
   refineryCost: 8500.00,
+  refineryRateMult: 1,
 
   promoLevel: 1,
   promoCost: 50.00,

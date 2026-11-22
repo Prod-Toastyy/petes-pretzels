@@ -637,15 +637,71 @@ const Projects = [
     id: "unlock_supply_chain",
     icon: "[⛓️]",
     title: "Vertical Supply Chain Charter",
-    desc: "Unlocks Rock Salt Mines, Winter Wheat Fields, and Dough Refineries to produce dough in-house.",
+    desc: "Unlocks Rock Salt Mines, Winter Wheat Fields, and Dough Refineries to produce massive dough in-house.",
     cashCost: 5000,
     rpCost: 25,
-    trigger: () => GameState.unlockedMinigame && GameState.pretzels >= 10000 && (GameState.doughPurchases >= 8 || GameState.doughCost >= 18),
+    trigger: () => GameState.unlockedMinigame && GameState.pretzels >= 10000 && (GameState.doughPurchases >= 6 || GameState.doughCost >= 15),
     effect: () => {
       GameState.unlockedSupplyChain = true;
       GameState.supplyChainEnabled = true;
       showEl("system-supply-chain");
       logMessage("Vertical Supply Chain unlocked! Open Mines, Fields & Refineries.");
+    }
+  },
+  {
+    id: "supply_cryo_salt",
+    icon: "[⛏️]",
+    title: "Cryo-Borehole Salt Extraction",
+    desc: "3x Rock Salt Mine output so salt never bottlenecks your refineries.",
+    cashCost: 14000,
+    rpCost: 15,
+    trigger: () => GameState.unlockedSupplyChain && GameState.saltMines >= 3,
+    effect: () => {
+      GameState.saltRateMult *= 3;
+      logMessage("Supply Upgrade: Rock Salt Mines boosted by 3x!");
+    }
+  },
+  {
+    id: "supply_hybrid_wheat",
+    icon: "[🌾]",
+    title: "High-Yield Winter Wheat Genetics",
+    desc: "3x Winter Wheat Field harvest rate.",
+    cashCost: 18000,
+    rpCost: 15,
+    trigger: () => GameState.unlockedSupplyChain && GameState.wheatFarms >= 3,
+    effect: () => {
+      GameState.wheatRateMult *= 3;
+      logMessage("Supply Upgrade: Winter Wheat Fields boosted by 3x!");
+    }
+  },
+  {
+    id: "supply_pressurized_refinery",
+    icon: "[🏭]",
+    title: "Pressurized Continuous Dough Reactors",
+    desc: "4x Dough Refinery throughput (with 2x Salt & Wheat feed) to replace Dough Buyer.",
+    cashCost: 28000,
+    rpCost: 25,
+    trigger: () => GameState.unlockedSupplyChain && GameState.refineries >= 3,
+    effect: () => {
+      GameState.refineryRateMult *= 4;
+      GameState.saltRateMult *= 2;
+      GameState.wheatRateMult *= 2;
+      logMessage("Supply Upgrade: Dough Refineries now refine at 4x throughput!");
+    }
+  },
+  {
+    id: "supply_hyper_silos",
+    icon: "[⚡]",
+    title: "Automated Mega-Silo Logistics",
+    desc: "5x ALL Supply Chain production (Salt, Wheat & Dough Refineries) — Dough Buyer obsolete!",
+    cashCost: 95000,
+    rpCost: 45,
+    trigger: () => GameState.unlockedSupplyChain && GameState.refineries >= 10,
+    effect: () => {
+      GameState.saltRateMult *= 5;
+      GameState.wheatRateMult *= 5;
+      GameState.refineryRateMult *= 5;
+      logMessage("MEGA-SILOS ONLINE: Supply Chain boosted by 5x across all facilities!");
     }
   },
   {
@@ -792,6 +848,286 @@ const Projects = [
       GameState.droneCapacity *= 3;
       logMessage("RP Breakthrough: Drones boosted by 3x!");
     }
+  },
+
+  // ==========================================
+  // CONTINENT-EXCLUSIVE UPGRADES (BETA.6)
+  // ==========================================
+
+  // South America (Continent 2 / index >= 1)
+  {
+    id: "sa_recipe_dulce",
+    icon: "[🍮]",
+    title: "[South America] Recipe: Dulce de Leche Glaze",
+    desc: "Unlocks South American caramel glaze pretzels (6.5x price, +55% demand).",
+    cashCost: 35000,
+    rpCost: 20,
+    minContinent: 1,
+    trigger: () => (GameState.continentIndex || 0) >= 1 && GameState.pretzels >= 2500,
+    effect: () => {
+      unlockRecipe("dulce");
+      logMessage("South America Specialty Unlocked: Dulce de Leche Glaze (6.5x)!");
+    }
+  },
+  {
+    id: "sa_extruder_wind",
+    icon: "[🌬️]",
+    title: "[South America] Patagonian Wind-Driven Extruders",
+    desc: "4x Auto-Extruder output speed.",
+    cashCost: 65000,
+    rpCost: 30,
+    minContinent: 1,
+    trigger: () => (GameState.continentIndex || 0) >= 1 && GameState.extruders >= 10,
+    effect: () => {
+      GameState.extruderSpeed *= 4;
+      logMessage("South America Upgrade: Patagonian Extruders running at 4x!");
+    }
+  },
+  {
+    id: "sa_supply_andean",
+    icon: "[⛰️]",
+    title: "[South America] Andean Brine & Highland Grain",
+    desc: "3x Salt Mine, Wheat Field & Dough Refinery output.",
+    cashCost: 120000,
+    rpCost: 40,
+    minContinent: 1,
+    trigger: () => (GameState.continentIndex || 0) >= 1 && GameState.unlockedSupplyChain,
+    effect: () => {
+      GameState.saltRateMult *= 3;
+      GameState.wheatRateMult *= 3;
+      GameState.refineryRateMult *= 3;
+      logMessage("South America Upgrade: Supply Chain boosted by 3x!");
+    }
+  },
+
+  // Europe (Continent 3 / index >= 2)
+  {
+    id: "eu_recipe_truffle",
+    icon: "[🍄]",
+    title: "[Europe] Recipe: Alpine Truffle & Gruyère",
+    desc: "Unlocks luxury European truffle pretzels (10.0x price, +70% demand).",
+    cashCost: 90000,
+    rpCost: 30,
+    minContinent: 2,
+    trigger: () => (GameState.continentIndex || 0) >= 2 && GameState.pretzels >= 5000,
+    effect: () => {
+      unlockRecipe("truffle");
+      logMessage("Europe Specialty Unlocked: Alpine Truffle & Gruyère (10.0x)!");
+    }
+  },
+  {
+    id: "eu_extruder_geothermal",
+    icon: "[♨️]",
+    title: "[Europe] Alpine Geothermal Kiln Array",
+    desc: "5x Auto-Extruder output speed.",
+    cashCost: 180000,
+    rpCost: 45,
+    minContinent: 2,
+    trigger: () => (GameState.continentIndex || 0) >= 2 && GameState.extruders >= 15,
+    effect: () => {
+      GameState.extruderSpeed *= 5;
+      logMessage("Europe Upgrade: Geothermal Kiln Array running at 5x!");
+    }
+  },
+  {
+    id: "eu_freight_barges",
+    icon: "[🚢]",
+    title: "[Europe] Rhine River Heavy Freight Barges",
+    desc: "4x Delivery Truck hauling capacity & +$5.00 luxury dip pairing.",
+    cashCost: 320000,
+    rpCost: 55,
+    minContinent: 2,
+    trigger: () => (GameState.continentIndex || 0) >= 2 && GameState.trucks >= 8,
+    effect: () => {
+      GameState.truckCapacity *= 4;
+      GameState.dipBonus += 5.00;
+      logMessage("Europe Upgrade: Freight Barges (4x Trucks) & +$5.00 dip bonus!");
+    }
+  },
+
+  // Africa (Continent 4 / index >= 3)
+  {
+    id: "af_recipe_berbere",
+    icon: "[🌶️]",
+    title: "[Africa] Recipe: Spiced Berbere Cheddar",
+    desc: "Unlocks bold spiced cheddar pretzels (16.0x price, +85% demand).",
+    cashCost: 220000,
+    rpCost: 40,
+    minContinent: 3,
+    trigger: () => (GameState.continentIndex || 0) >= 3 && GameState.pretzels >= 10000,
+    effect: () => {
+      unlockRecipe("berbere");
+      logMessage("Africa Specialty Unlocked: Spiced Berbere Cheddar (16.0x)!");
+    }
+  },
+  {
+    id: "af_extruder_solar",
+    icon: "[☀️]",
+    title: "[Africa] Sahara Concentrated Solar Ovens",
+    desc: "6x Auto-Extruder output speed.",
+    cashCost: 420000,
+    rpCost: 60,
+    minContinent: 3,
+    trigger: () => (GameState.continentIndex || 0) >= 3 && GameState.extruders >= 20,
+    effect: () => {
+      GameState.extruderSpeed *= 6;
+      logMessage("Africa Upgrade: Sahara Solar Ovens baking at 6x!");
+    }
+  },
+  {
+    id: "af_supply_rail",
+    icon: "[🚂]",
+    title: "[Africa] Trans-Continental Bulk Rail Grid",
+    desc: "5x Dough Refinery & Salt/Wheat Supply Chain throughput.",
+    cashCost: 750000,
+    rpCost: 75,
+    minContinent: 3,
+    trigger: () => (GameState.continentIndex || 0) >= 3 && GameState.unlockedSupplyChain,
+    effect: () => {
+      GameState.saltRateMult *= 5;
+      GameState.wheatRateMult *= 5;
+      GameState.refineryRateMult *= 5;
+      logMessage("Africa Upgrade: Bulk Rail Grid boosted Supply Chain by 5x!");
+    }
+  },
+
+  // Asia (Continent 5 / index >= 4)
+  {
+    id: "as_recipe_matcha",
+    icon: "[🍵]",
+    title: "[Asia] Recipe: Matcha & Yuzu Honey",
+    desc: "Unlocks artisanal Matcha & Yuzu pretzels (25.0x price, +105% demand).",
+    cashCost: 500000,
+    rpCost: 55,
+    minContinent: 4,
+    trigger: () => (GameState.continentIndex || 0) >= 4 && GameState.pretzels >= 25000,
+    effect: () => {
+      unlockRecipe("matcha");
+      logMessage("Asia Specialty Unlocked: Matcha & Yuzu Honey (25.0x)!");
+    }
+  },
+  {
+    id: "as_extruder_maglev",
+    icon: "[🚄]",
+    title: "[Asia] Maglev Continuous Dough Conduits",
+    desc: "8x Auto-Extruder output speed.",
+    cashCost: 950000,
+    rpCost: 75,
+    minContinent: 4,
+    trigger: () => (GameState.continentIndex || 0) >= 4 && GameState.extruders >= 25,
+    effect: () => {
+      GameState.extruderSpeed *= 8;
+      logMessage("Asia Upgrade: Maglev Dough Conduits running at 8x!");
+    }
+  },
+  {
+    id: "as_swarm_drones",
+    icon: "[🛸]",
+    title: "[Asia] Hypersonic AI Swarm Drones",
+    desc: "5x Pretzel Drone delivery capacity & +$15.00 dip bonus.",
+    cashCost: 1600000,
+    rpCost: 90,
+    minContinent: 4,
+    trigger: () => (GameState.continentIndex || 0) >= 4 && GameState.drones >= 10,
+    effect: () => {
+      GameState.droneCapacity *= 5;
+      GameState.dipBonus += 15.00;
+      logMessage("Asia Upgrade: AI Swarm Drones (5x Drones) & +$15.00 dip bonus!");
+    }
+  },
+
+  // Oceania (Continent 6 / index >= 5)
+  {
+    id: "oc_recipe_macadamia",
+    icon: "[🥥]",
+    title: "[Oceania] Recipe: Macadamia Salted Caramel",
+    desc: "Unlocks roasted macadamia caramel pretzels (40.0x price, +130% demand).",
+    cashCost: 1100000,
+    rpCost: 70,
+    minContinent: 5,
+    trigger: () => (GameState.continentIndex || 0) >= 5 && GameState.pretzels >= 50000,
+    effect: () => {
+      unlockRecipe("macadamia");
+      logMessage("Oceania Specialty Unlocked: Macadamia Salted Caramel (40.0x)!");
+    }
+  },
+  {
+    id: "oc_extruder_tidal",
+    icon: "[🌊]",
+    title: "[Oceania] Deep-Ocean Tidal Press Turbines",
+    desc: "10x Auto-Extruder output speed.",
+    cashCost: 2200000,
+    rpCost: 95,
+    minContinent: 5,
+    trigger: () => (GameState.continentIndex || 0) >= 5 && GameState.extruders >= 30,
+    effect: () => {
+      GameState.extruderSpeed *= 10;
+      logMessage("Oceania Upgrade: Tidal Press Turbines running at 10x!");
+    }
+  },
+  {
+    id: "oc_supply_brine",
+    icon: "[🐚]",
+    title: "[Oceania] Abyssal Brine & Reef Bio-Refineries",
+    desc: "8x Salt Mine, Wheat Field & Dough Refinery throughput.",
+    cashCost: 3800000,
+    rpCost: 115,
+    minContinent: 5,
+    trigger: () => (GameState.continentIndex || 0) >= 5 && GameState.unlockedSupplyChain,
+    effect: () => {
+      GameState.saltRateMult *= 8;
+      GameState.wheatRateMult *= 8;
+      GameState.refineryRateMult *= 8;
+      logMessage("Oceania Upgrade: Bio-Refineries boosted Supply Chain by 8x!");
+    }
+  },
+
+  // Antarctica (Continent 7 / index >= 6)
+  {
+    id: "an_recipe_glacier",
+    icon: "[🧊]",
+    title: "[Antarctica] Recipe: Crystalline Glacier Salt",
+    desc: "Unlocks ancient glacial-salt pretzels (65.0x price, +160% demand).",
+    cashCost: 2500000,
+    rpCost: 90,
+    minContinent: 6,
+    trigger: () => (GameState.continentIndex || 0) >= 6 && GameState.pretzels >= 100000,
+    effect: () => {
+      unlockRecipe("glacier");
+      logMessage("Antarctica Specialty Unlocked: Crystalline Glacier Salt (65.0x)!");
+    }
+  },
+  {
+    id: "an_extruder_superconductor",
+    icon: "[💠]",
+    title: "[Antarctica] Sub-Zero Superconducting Presses",
+    desc: "15x Auto-Extruder output speed.",
+    cashCost: 4800000,
+    rpCost: 120,
+    minContinent: 6,
+    trigger: () => (GameState.continentIndex || 0) >= 6 && GameState.extruders >= 35,
+    effect: () => {
+      GameState.extruderSpeed *= 15;
+      logMessage("Antarctica Upgrade: Superconducting Presses running at 15x!");
+    }
+  },
+  {
+    id: "an_orbital_logistics",
+    icon: "[🛰️]",
+    title: "[Antarctica] Polar Orbital Drop-Pod Network",
+    desc: "10x Drone & Truck capacity + 10x Supply Chain refining for final Earth conquest!",
+    cashCost: 8500000,
+    rpCost: 150,
+    minContinent: 6,
+    trigger: () => (GameState.continentIndex || 0) >= 6 && GameState.drones >= 15,
+    effect: () => {
+      GameState.droneCapacity *= 10;
+      GameState.truckCapacity *= 10;
+      GameState.saltRateMult *= 10;
+      GameState.wheatRateMult *= 10;
+      GameState.refineryRateMult *= 10;
+      logMessage("Antarctica Upgrade: Polar Orbital Network boosted Delivery & Supply by 10x!");
+    }
   }
 ];
 
@@ -806,9 +1142,9 @@ let lastShotTime = 0;
 let controlsBound = false;
 let globeSpinTimer = 0;
 
-const SALT_BASE_RATE = 40;
-const WHEAT_BASE_RATE = 60;
-const REFINERY_BASE_RATE = 80;
+const SALT_BASE_RATE = 250;
+const WHEAT_BASE_RATE = 350;
+const REFINERY_BASE_RATE = 600;
 const SALT_BASE_PAYROLL = 12.00;
 const WHEAT_BASE_PAYROLL = 20.00;
 const REFINERY_BASE_PAYROLL = 45.00;
@@ -900,10 +1236,13 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.wheat)) GameState.wheat = 0;
   if (!Number.isFinite(GameState.saltMines)) GameState.saltMines = 0;
   if (!Number.isFinite(GameState.saltMineCost) || GameState.saltMineCost <= 0) GameState.saltMineCost = 2500.00;
+  if (!Number.isFinite(GameState.saltRateMult) || GameState.saltRateMult <= 0) GameState.saltRateMult = 1;
   if (!Number.isFinite(GameState.wheatFarms)) GameState.wheatFarms = 0;
   if (!Number.isFinite(GameState.wheatFarmCost) || GameState.wheatFarmCost <= 0) GameState.wheatFarmCost = 4000.00;
+  if (!Number.isFinite(GameState.wheatRateMult) || GameState.wheatRateMult <= 0) GameState.wheatRateMult = 1;
   if (!Number.isFinite(GameState.refineries)) GameState.refineries = 0;
   if (!Number.isFinite(GameState.refineryCost) || GameState.refineryCost <= 0) GameState.refineryCost = 8500.00;
+  if (!Number.isFinite(GameState.refineryRateMult) || GameState.refineryRateMult <= 0) GameState.refineryRateMult = 1;
 
   if (!Number.isFinite(GameState.promoLevel) || GameState.promoLevel < 1) GameState.promoLevel = 1;
   if (!Number.isFinite(GameState.promoCost) || GameState.promoCost <= 0) GameState.promoCost = 50.00;
@@ -958,9 +1297,9 @@ function getActiveSupplyRates() {
   if (!isSupplyChainActivelyRunning()) {
     return { saltPerSec: 0, wheatPerSec: 0, doughPerSec: 0 };
   }
-  const saltMult = getModuleTierInfo(GameState.saltMines).mult;
-  const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult;
-  const refineryMult = getModuleTierInfo(GameState.refineries).mult;
+  const saltMult = getModuleTierInfo(GameState.saltMines).mult * (GameState.saltRateMult || 1);
+  const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
+  const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
 
   const saltPerSec = GameState.saltMines * SALT_BASE_RATE * saltMult;
   const wheatPerSec = GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult;
@@ -1864,7 +2203,8 @@ function checkUnlocks() {
   if (!projectsList) return;
 
   Projects.forEach(proj => {
-    if (!GameState.completedProjects.includes(proj.id) && proj.trigger()) {
+    const meetsContinent = !proj.minContinent || (GameState.continentIndex || 0) >= proj.minContinent;
+    if (!GameState.completedProjects.includes(proj.id) && meetsContinent && proj.trigger()) {
       showEl("panel-projects");
 
       if (!getEl(`proj-${proj.id}`)) {
@@ -1989,28 +2329,31 @@ function render() {
     }
 
     const saltPayroll = getFacilityPayrollPerSec(GameState.saltMines, SALT_BASE_PAYROLL);
+    const effectiveSaltMult = saltTier.mult * (GameState.saltRateMult || 1);
     setText("salt-mine-count", GameState.saltMines);
     setText("salt-mine-cost", GameState.saltMineCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setText("salt-mine-sell-val", getSaltMineSellValue().toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    setText("salt-mine-rate", (SALT_BASE_RATE * saltTier.mult).toLocaleString());
+    setText("salt-mine-rate", (SALT_BASE_RATE * effectiveSaltMult).toLocaleString());
     setText("salt-mine-payroll", saltPayroll.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setDisabled("btn-buy-salt-mine", GameState.funds < GameState.saltMineCost);
     setDisabled("btn-sell-salt-mine", GameState.saltMines <= 0);
 
     const wheatPayroll = getFacilityPayrollPerSec(GameState.wheatFarms, WHEAT_BASE_PAYROLL);
+    const effectiveWheatMult = wheatTier.mult * (GameState.wheatRateMult || 1);
     setText("wheat-farm-count", GameState.wheatFarms);
     setText("wheat-farm-cost", GameState.wheatFarmCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setText("wheat-farm-sell-val", getWheatFarmSellValue().toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    setText("wheat-farm-rate", (WHEAT_BASE_RATE * wheatTier.mult).toLocaleString());
+    setText("wheat-farm-rate", (WHEAT_BASE_RATE * effectiveWheatMult).toLocaleString());
     setText("wheat-farm-payroll", wheatPayroll.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setDisabled("btn-buy-wheat-farm", GameState.funds < GameState.wheatFarmCost);
     setDisabled("btn-sell-wheat-farm", GameState.wheatFarms <= 0);
 
     const refineryPayroll = getFacilityPayrollPerSec(GameState.refineries, REFINERY_BASE_PAYROLL);
+    const effectiveRefineryMult = refineryTier.mult * (GameState.refineryRateMult || 1);
     setText("refinery-count", GameState.refineries);
     setText("refinery-cost", GameState.refineryCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setText("refinery-sell-val", getRefinerySellValue().toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    setText("refinery-rate", (REFINERY_BASE_RATE * refineryTier.mult).toLocaleString());
+    setText("refinery-rate", (REFINERY_BASE_RATE * effectiveRefineryMult).toLocaleString());
     setText("refinery-payroll", refineryPayroll.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setDisabled("btn-buy-refinery", GameState.funds < GameState.refineryCost);
     setDisabled("btn-sell-refinery", GameState.refineries <= 0);
@@ -2245,9 +2588,9 @@ async function bootGame() {
           tickNetCash -= tickPayroll;
         }
 
-        const saltMult = getModuleTierInfo(GameState.saltMines).mult;
-        const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult;
-        const refineryMult = getModuleTierInfo(GameState.refineries).mult;
+        const saltMult = getModuleTierInfo(GameState.saltMines).mult * (GameState.saltRateMult || 1);
+        const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
+        const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
 
         GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) / 10;
         GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) / 10;
