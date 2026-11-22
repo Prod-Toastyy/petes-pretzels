@@ -23,8 +23,53 @@ const ALL_THEME_CLASSES = [
   "theme-glacial"
 ];
 
+const domCache = new Map();
+const lastTextCache = new Map();
+const lastPlinkoSignature = { value: "" };
+
+function getEl(id) {
+  if (domCache.has(id)) {
+    const cached = domCache.get(id);
+    if (cached && cached.isConnected) return cached;
+  }
+  const el = document.getElementById(id);
+  if (el) domCache.set(id, el);
+  return el;
+}
+
+function setText(id, val) {
+  const strVal = String(val);
+  const cacheKey = `txt:${id}`;
+  if (lastTextCache.get(cacheKey) === strVal) return;
+  const el = getEl(id);
+  if (el) {
+    el.textContent = strVal;
+    lastTextCache.set(cacheKey, strVal);
+  }
+}
+
+function showEl(id) {
+  const el = getEl(id);
+  if (el && el.classList.contains("hidden")) el.classList.remove("hidden");
+}
+
+function hideEl(id) {
+  const el = getEl(id);
+  if (el && !el.classList.contains("hidden")) el.classList.add("hidden");
+}
+
+function setDisabled(id, isDisabled) {
+  const el = getEl(id);
+  if (el && el.disabled !== isDisabled) el.disabled = isDisabled;
+}
+
+function onClick(id, handler) {
+  const el = getEl(id);
+  if (el) el.addEventListener("click", handler);
+}
+
 function refreshThemeDropdown() {
-  const select = document.getElementById("select-theme");
+  const select = getEl("select-theme");
   if (!select) return;
 
   const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
@@ -58,9 +103,9 @@ function applyTheme(themeId) {
 }
 
 function refreshCloudMenuUI() {
-  const loggedOutBox = document.getElementById("cloud-logged-out-controls");
-  const loggedInBox = document.getElementById("cloud-logged-in-controls");
-  const emailEl = document.getElementById("cloud-user-email");
+  const loggedOutBox = getEl("cloud-logged-out-controls");
+  const loggedInBox = getEl("cloud-logged-in-controls");
+  const emailEl = getEl("cloud-user-email");
 
   if (typeof CloudSave !== "undefined" && CloudSave.user) {
     if (loggedOutBox) loggedOutBox.classList.add("hidden");
@@ -106,7 +151,7 @@ function getModuleAsciiStage(artKey, tierIndex) {
 
 function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "", asciiElId = null, artKey = null) {
   const info = getModuleTierInfo(count);
-  const box = document.getElementById(boxId);
+  const box = getEl(boxId);
   if (box) {
     box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
     if (info.tier > 0) box.classList.add(`tier-${info.tier}`);
@@ -133,7 +178,7 @@ function getGallery() {
 }
 
 window.startGameFromModal = function() {
-  const inputEl = document.getElementById("input-player-name");
+  const inputEl = getEl("input-player-name");
   const nameInput = inputEl ? inputEl.value.trim() : "";
 
   if (typeof GameState !== "undefined") {
@@ -144,11 +189,8 @@ window.startGameFromModal = function() {
     }
   }
 
-  const nameDisplay = document.getElementById("display-player-name");
-  if (nameDisplay) nameDisplay.textContent = nameInput || "Baker";
-
-  const modal = document.getElementById("setup-modal");
-  if (modal) modal.classList.add("hidden");
+  setText("display-player-name", nameInput || "Baker");
+  hideEl("setup-modal");
 
   applySessionUI();
   logMessage(`Welcome, ${nameInput || "Baker"}. Kitchen is open.`);
@@ -317,7 +359,7 @@ const Projects = [
     effect: () => {
       GameState.unlockedPlinko = true;
       showEl("panel-plinko");
-      renderPlinkoBoard();
+      renderPlinkoBoard(true);
       logMessage("ASCII Plinko unlocked! Hit exact center [★] for Golden Rush.");
     }
   },
@@ -596,6 +638,7 @@ const WHEAT_BASE_PAYROLL = 20.00;
 const REFINERY_BASE_PAYROLL = 45.00;
 
 const PLINKO_COLS = 19;
+const PLINKO_INNER_COLS = PLINKO_COLS - 2; // 17 inner positions (indices 0..16 -> board cols 1..17)
 const PLINKO_ROWS = 6;
 const PLINKO_COST = 50;
 const MAX_FALLING_PRETZELS = 3;
@@ -604,33 +647,8 @@ let plinkoDropperDir = 1;
 let plinkoBall = null;
 let plinkoStepTimer = 0;
 
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
-}
-
-function showEl(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.remove("hidden");
-}
-
-function hideEl(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.add("hidden");
-}
-
-function setDisabled(id, isDisabled) {
-  const el = document.getElementById(id);
-  if (el) el.disabled = isDisabled;
-}
-
-function onClick(id, handler) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener("click", handler);
-}
-
 function bindHoldButton(id, actionFn) {
-  const btn = document.getElementById(id);
+  const btn = getEl(id);
   if (!btn) return;
 
   let holdDelayTimer = null;
@@ -900,7 +918,7 @@ function unlockRecipe(recipeId) {
 }
 
 function refreshRecipeDropdown() {
-  const select = document.getElementById("select-recipe");
+  const select = getEl("select-recipe");
   if (!select) return;
 
   if (GameState.unlockedRecipes.length > 1) {
@@ -943,35 +961,62 @@ function getEvolvedAscii() {
   return base;
 }
 
-function renderPlinkoBoard() {
-  const boardEl = document.getElementById("plinko-board");
+function buildPlinkoBucketRow() {
+  // Inner width is PLINKO_INNER_COLS (17 chars between left '|' and right '|')
+  // Center index 8 corresponds to board column 9 ([★])
+  const slots = Array(PLINKO_INNER_COLS).fill(" ");
+  const putToken = (startIdx, token) => {
+    for (let i = 0; i < token.length; i++) {
+      if (startIdx + i >= 0 && startIdx + i < PLINKO_INNER_COLS) {
+        slots[startIdx + i] = token[i];
+      }
+    }
+  };
+
+  putToken(1, "[X]");
+  putToken(5, "[🌾]");
+  putToken(8, "[★]");
+  putToken(11, "[🌾]");
+  putToken(13, "[X]");
+
+  return `|${slots.join("")}|`;
+}
+
+function renderPlinkoBoard(force = false) {
+  const boardEl = getEl("plinko-board");
   if (!boardEl) return;
 
-  const lines = [];
-  const dropCol = Math.round(plinkoDropperPos);
+  const dropCol = Math.max(1, Math.min(PLINKO_COLS - 2, Math.round(plinkoDropperPos)));
+  const ballRow = plinkoBall ? plinkoBall.row : -1;
+  const ballCol = plinkoBall ? plinkoBall.col : -1;
+  const signature = `${dropCol}:${ballRow}:${ballCol}`;
 
-  let topRow = Array(PLINKO_COLS).fill(" ");
+  if (!force && lastPlinkoSignature.value === signature) return;
+  lastPlinkoSignature.value = signature;
+
+  const lines = [];
+  const topRow = Array(PLINKO_INNER_COLS).fill(" ");
   if (!plinkoBall) {
-    topRow[dropCol] = "▼";
+    topRow[dropCol - 1] = "▼";
   } else if (plinkoBall.row === 0) {
-    topRow[plinkoBall.col] = "@";
+    topRow[plinkoBall.col - 1] = "@";
   }
-  lines.push(" " + topRow.join("") + " ");
+  lines.push(` ${topRow.join("")} `);
 
   for (let r = 1; r < PLINKO_ROWS; r++) {
-    let rowChars = Array(PLINKO_COLS).fill(" ");
-    for (let c = 2; c < PLINKO_COLS - 2; c++) {
+    const rowChars = Array(PLINKO_INNER_COLS).fill(" ");
+    for (let c = 1; c < PLINKO_INNER_COLS - 1; c++) {
       if ((r + c) % 2 === 1) {
         rowChars[c] = "·";
       }
     }
     if (plinkoBall && plinkoBall.row === r) {
-      rowChars[plinkoBall.col] = "@";
+      rowChars[plinkoBall.col - 1] = "@";
     }
-    lines.push("|" + rowChars.join("") + "|");
+    lines.push(`|${rowChars.join("")}|`);
   }
 
-  lines.push("|[X]  [🌾] [★] [🌾]  [X]|");
+  lines.push(buildPlinkoBucketRow());
   boardEl.textContent = lines.join("\n");
 }
 
@@ -990,7 +1035,7 @@ function dropPlinkoPretzel() {
   };
   plinkoStepTimer = 0;
   setText("plinko-feedback", "Dropping pretzel...");
-  renderPlinkoBoard();
+  renderPlinkoBoard(true);
   render();
 }
 
@@ -1013,7 +1058,7 @@ function resolvePlinkoBucket(finalCol) {
 }
 
 function spawnFallingGoldenPretzel() {
-  const sky = document.getElementById("golden-sky-layer");
+  const sky = getEl("golden-sky-layer");
   if (!sky || !GameState.isGoldenRushActive()) return;
   if (sky.childElementCount >= MAX_FALLING_PRETZELS) return;
 
@@ -1059,7 +1104,7 @@ function shootTarget() {
   if (now - lastShotTime < 140) return;
   lastShotTime = now;
 
-  const trackEl = document.getElementById("range-track");
+  const trackEl = getEl("range-track");
   const distFromCenter = Math.abs(crosshairPos - 50);
 
   if (trackEl) {
@@ -1084,7 +1129,7 @@ function shootTarget() {
 }
 
 function initSetupPicker() {
-  const grid = document.getElementById("ascii-picker-grid");
+  const grid = getEl("ascii-picker-grid");
   const gallery = getGallery();
 
   if (grid) {
@@ -1113,6 +1158,8 @@ function resetRegionalPanelsUI() {
   liveCashPerSec = 0;
   manualBakeHistory = [];
   plinkoBall = null;
+  lastPlinkoSignature.value = "";
+  lastTextCache.clear();
 
   document.body.classList.remove("golden-rush-active");
   hideEl("golden-rush-badge");
@@ -1131,7 +1178,7 @@ function resetRegionalPanelsUI() {
   hideEl("panel-minigame");
   hideEl("panel-plinko");
 
-  const projectsList = document.getElementById("projects-list");
+  const projectsList = getEl("projects-list");
   if (projectsList) projectsList.innerHTML = "";
 }
 
@@ -1162,7 +1209,7 @@ function applySessionUI() {
   }
   if (GameState.unlockedPlinko) {
     showEl("panel-plinko");
-    renderPlinkoBoard();
+    renderPlinkoBoard(true);
   }
   if (GameState.completedProjects.length > 0 || GameState.pretzels >= 20) {
     showEl("panel-projects");
@@ -1176,8 +1223,8 @@ function bindControls() {
   onClick("btn-bake", window.handleManualBake);
 
   onClick("btn-cloud-login", async () => {
-    const email = (document.getElementById("cloud-email")?.value || "").trim();
-    const password = document.getElementById("cloud-password")?.value || "";
+    const email = (getEl("cloud-email")?.value || "").trim();
+    const password = getEl("cloud-password")?.value || "";
     if (!email || !password) {
       setText("cloud-menu-msg", "Enter email and password.");
       return;
@@ -1195,8 +1242,8 @@ function bindControls() {
   });
 
   onClick("btn-cloud-signup", async () => {
-    const email = (document.getElementById("cloud-email")?.value || "").trim();
-    const password = document.getElementById("cloud-password")?.value || "";
+    const email = (getEl("cloud-email")?.value || "").trim();
+    const password = getEl("cloud-password")?.value || "";
     if (!email || password.length < 6) {
       setText("cloud-menu-msg", "Enter email and a 6+ char password.");
       return;
@@ -1395,7 +1442,7 @@ function bindControls() {
     hideEl("restart-modal");
   });
 
-  const themeSelect = document.getElementById("select-theme");
+  const themeSelect = getEl("select-theme");
   if (themeSelect) {
     themeSelect.addEventListener("change", (e) => {
       applyTheme(e.target.value);
@@ -1410,7 +1457,7 @@ function bindControls() {
     resetRegionalPanelsUI();
     hideEl("restart-modal");
 
-    const nameInput = document.getElementById("input-player-name");
+    const nameInput = getEl("input-player-name");
     if (nameInput) nameInput.value = "";
 
     if (typeof AchievementManager !== "undefined") {
@@ -1441,7 +1488,7 @@ function bindControls() {
     }
   });
 
-  const recipeSelect = document.getElementById("select-recipe");
+  const recipeSelect = getEl("select-recipe");
   if (recipeSelect) {
     recipeSelect.addEventListener("change", (e) => {
       GameState.activeRecipe = e.target.value;
@@ -1585,14 +1632,14 @@ function checkUnlocks() {
     logMessage("Automation unlocked.");
   }
 
-  const projectsList = document.getElementById("projects-list");
+  const projectsList = getEl("projects-list");
   if (!projectsList) return;
 
   Projects.forEach(proj => {
     if (!GameState.completedProjects.includes(proj.id) && proj.trigger()) {
       showEl("panel-projects");
 
-      if (!document.getElementById(`proj-${proj.id}`)) {
+      if (!getEl(`proj-${proj.id}`)) {
         const affordable = canAffordProject(proj);
         const isHybridRP = proj.rpCost > 0;
         const card = document.createElement("div");
@@ -1674,13 +1721,13 @@ function render() {
   setText("demand", GameState.demand);
   setText("click-power", GameState.clickPower);
 
-  const invEl = document.getElementById("inventory");
+  const invEl = getEl("inventory");
   if (invEl) invEl.classList.toggle("zero-danger", wholeInventory <= 0);
 
-  const doughEl = document.getElementById("dough-amount");
+  const doughEl = getEl("dough-amount");
   if (doughEl) doughEl.classList.toggle("zero-danger", wholeDough <= 0);
 
-  const incomeLineEl = document.getElementById("income-rate-line");
+  const incomeLineEl = getEl("income-rate-line");
   if (GameState.unlockedIncomeTicker && incomeLineEl) {
     showEl("income-rate-line");
     const isNeg = liveCashPerSec < -0.005;
@@ -1708,7 +1755,7 @@ function render() {
       hideEl("refinery-rate-wrap");
     }
 
-    const toggleSupplyBtn = document.getElementById("btn-toggle-supply");
+    const toggleSupplyBtn = getEl("btn-toggle-supply");
     if (toggleSupplyBtn) {
       toggleSupplyBtn.textContent = `Operations: ${GameState.supplyChainEnabled ? "ON" : "OFF"}`;
     }
@@ -1758,7 +1805,7 @@ function render() {
 
   setDisabled("btn-drop-plinko", Boolean(plinkoBall) || wholeInventory < PLINKO_COST);
 
-  const doughStatus = document.getElementById("dough-status");
+  const doughStatus = getEl("dough-status");
   if (doughStatus) {
     if (GameState.dough < 1 && canAffordDough) {
       doughStatus.textContent = "Out of dough! Click Buy above to restock.";
@@ -1775,7 +1822,7 @@ function render() {
     }
   }
 
-  const autoBtn = document.getElementById("btn-toggle-autodough");
+  const autoBtn = getEl("btn-toggle-autodough");
   if (autoBtn && GameState.unlockedAutoDough) {
     autoBtn.textContent = `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`;
   }
@@ -1810,15 +1857,16 @@ function render() {
   setDisabled("btn-buy-drone", GameState.funds < GameState.droneCost);
   setDisabled("btn-sell-drone", GameState.drones <= 0);
 
-  const asciiEl = document.getElementById("ascii-stage");
+  const asciiEl = getEl("ascii-stage");
   if (asciiEl) {
-    asciiEl.textContent = getEvolvedAscii();
+    const evolved = getEvolvedAscii();
+    if (asciiEl.textContent !== evolved) asciiEl.textContent = evolved;
     asciiEl.classList.toggle("ascii-sway", GameState.pretzels >= 25000);
   }
 
   Projects.forEach(proj => {
-    const card = document.getElementById(`proj-${proj.id}`);
-    const btn = document.getElementById(`btn-${proj.id}`);
+    const card = getEl(`proj-${proj.id}`);
+    const btn = getEl(`btn-${proj.id}`);
     if (card && btn) {
       const unaffordable = !canAffordProject(proj);
       btn.disabled = unaffordable;
@@ -1829,7 +1877,7 @@ function render() {
 
 function animateMinigames(timestamp) {
   if (lastAnimTime === null) lastAnimTime = timestamp;
-  const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.1);
+  const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.05);
   lastAnimTime = timestamp;
 
   if (GameState.started) {
@@ -1845,8 +1893,8 @@ function animateMinigames(timestamp) {
         crosshairDir = 1;
       }
 
-      const ch = document.getElementById("range-crosshair");
-      if (ch) ch.style.left = `${crosshairPos}%`;
+      const ch = getEl("range-crosshair");
+      if (ch) ch.style.transform = `translateX(${(crosshairPos - 50) * 2}%)`;
     }
 
     if (GameState.unlockedPlinko) {
@@ -1881,13 +1929,13 @@ function animateMinigames(timestamp) {
             const landedCol = plinkoBall.col;
             plinkoBall = null;
             resolvePlinkoBucket(landedCol);
-            renderPlinkoBoard();
+            renderPlinkoBoard(true);
           }
         }
       }
     }
 
-    const achModal = document.getElementById("achievements-modal");
+    const achModal = getEl("achievements-modal");
     if (achModal && !achModal.classList.contains("hidden") && typeof renderSpinningGlobe === "function") {
       globeSpinTimer += dt;
       if (globeSpinTimer >= 0.16) {
@@ -1937,6 +1985,7 @@ async function bootGame() {
   }
 
   render();
+  renderPlinkoBoard(true);
   requestAnimationFrame(animateMinigames);
 
   setInterval(() => {
