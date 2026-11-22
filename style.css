@@ -73,6 +73,157 @@ body.theme-copper {
   --rp-text: #d5aee8;
 }
 
+/* Continent-Unlocked Themes */
+body.theme-emerald {
+  --bg-main: #0f1a14;
+  --bg-panel: #16261d;
+  --bg-module: #121f18;
+  --bg-header: #14221a;
+  --bg-well: #0b140f;
+  --bg-track: #09100c;
+  --bg-btn: #1f3629;
+  --border-panel: #2b4d3a;
+  --border-module: #233f30;
+  --border-btn: #3a664e;
+  --text-main: #e6f5ec;
+  --text-heading: #9ef0be;
+  --text-sub: #82b396;
+  --accent: #4ad682;
+  --accent-contrast: #0b1710;
+  --funds-bg: #142e1e;
+  --funds-border: #57e389;
+  --funds-label: #99f5b9;
+  --funds-val: #ccffde;
+  --rp-bg: #14292b;
+  --rp-border: #48b8c9;
+  --rp-text: #95e5f2;
+}
+
+body.theme-indigo {
+  --bg-main: #131321;
+  --bg-panel: #1b1b2e;
+  --bg-module: #171726;
+  --bg-header: #19192b;
+  --bg-well: #0e0e1a;
+  --bg-track: #0b0b14;
+  --bg-btn: #262640;
+  --border-panel: #38385c;
+  --border-module: #2e2e4d;
+  --border-btn: #4a4a78;
+  --text-main: #ececfa;
+  --text-heading: #c7c4ff;
+  --text-sub: #9593bd;
+  --accent: #9d8df7;
+  --accent-contrast: #100f1f;
+  --funds-bg: #172924;
+  --funds-border: #4ec99b;
+  --funds-label: #92edd0;
+  --funds-val: #c7faea;
+  --rp-bg: #241b36;
+  --rp-border: #b37feb;
+  --rp-text: #dec2ff;
+}
+
+body.theme-sahara {
+  --bg-main: #1f1911;
+  --bg-panel: #2d2418;
+  --bg-module: #261e14;
+  --bg-header: #292116;
+  --bg-well: #17120c;
+  --bg-track: #120e09;
+  --bg-btn: #3d3120;
+  --border-panel: #59472e;
+  --border-module: #4a3b26;
+  --border-btn: #755e3d;
+  --text-main: #faf2e6;
+  --text-heading: #ffe09e;
+  --text-sub: #c2aa84;
+  --accent: #f5b841;
+  --accent-contrast: #1c150b;
+  --funds-bg: #1f2b1c;
+  --funds-border: #63b856;
+  --funds-label: #a2eb96;
+  --funds-val: #d2facc;
+  --rp-bg: #2b2119;
+  --rp-border: #d98245;
+  --rp-text: #f7ba8f;
+}
+
+body.theme-cyber {
+  --bg-main: #140d1a;
+  --bg-panel: #1f1429;
+  --bg-module: #191021;
+  --bg-header: #1c1224;
+  --bg-well: #0f0914;
+  --bg-track: #0b070f;
+  --bg-btn: #2d1c3b;
+  --border-panel: #4a2d61;
+  --border-module: #3c244f;
+  --border-btn: #643d82;
+  --text-main: #f7ebff;
+  --text-heading: #ff85d8;
+  --text-sub: #b38ec9;
+  --accent: #ff47b6;
+  --accent-contrast: #170812;
+  --funds-bg: #112925;
+  --funds-border: #2be0c2;
+  --funds-label: #7df7e3;
+  --funds-val: #bdfcf2;
+  --rp-bg: #162238;
+  --rp-border: #4da6ff;
+  --rp-text: #a3d1ff;
+}
+
+body.theme-coral {
+  --bg-main: #0e1b1d;
+  --bg-panel: #15282b;
+  --bg-module: #112124;
+  --bg-header: #132528;
+  --bg-well: #0a1416;
+  --bg-track: #081012;
+  --bg-btn: #1d383d;
+  --border-panel: #2b5259;
+  --border-module: #23434a;
+  --border-btn: #396b75;
+  --text-main: #e8f7f9;
+  --text-heading: #9bf2ea;
+  --text-sub: #82b5ba;
+  --accent: #ff7b6b;
+  --accent-contrast: #1c0e0c;
+  --funds-bg: #132b24;
+  --funds-border: #48d1a8;
+  --funds-label: #91f2d5;
+  --funds-val: #c7fcf0;
+  --rp-bg: #142633;
+  --rp-border: #56b4e9;
+  --rp-text: #a6dbfa;
+}
+
+body.theme-glacial {
+  --bg-main: #10171f;
+  --bg-panel: #17222e;
+  --bg-module: #131c26;
+  --bg-header: #151f2b;
+  --bg-well: #0b1017;
+  --bg-track: #080c12;
+  --bg-btn: #202f40;
+  --border-panel: #324861;
+  --border-module: #283a4f;
+  --border-btn: #446182;
+  --text-main: #edf5fc;
+  --text-heading: #bfe0ff;
+  --text-sub: #8ea9c4;
+  --accent: #6ec4ff;
+  --accent-contrast: #0a1521;
+  --funds-bg: #132926;
+  --funds-border: #52d6be;
+  --funds-label: #99f5e4;
+  --funds-val: #ccfcf3;
+  --rp-bg: #192438;
+  --rp-border: #85a9ff;
+  --rp-text: #c2d4ff;
+}
+
 * {
   box-sizing: border-box;
   font-family: 'JetBrains Mono', monospace;
@@ -599,13 +750,26 @@ button:disabled {
   border-color: var(--border-module);
 }
 
-/* Conquest Card, Dual Progress Bars & Achievements Grid */
+/* Conquest Card, Spinning ASCII Globe, Dual Progress Bars & Achievements Grid */
 .conquest-card {
   background: linear-gradient(135deg, var(--bg-well), #2b2216);
   border: 1px solid #c9973e;
   border-radius: 10px;
   padding: 14px 16px;
   margin-bottom: 12px;
+}
+
+.conquest-main-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.conquest-info-col {
+  flex: 1;
+  min-width: 260px;
 }
 
 .conquest-top {
@@ -638,6 +802,91 @@ button:disabled {
   border-radius: 8px;
   font-size: 12px;
 }
+
+.continent-pills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.cont-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid #5c4b41;
+  background: rgba(20, 16, 14, 0.7);
+}
+
+.cont-chip.owned {
+  border-color: #4fa86e;
+  background: rgba(79, 168, 110, 0.18);
+  color: #7ef2a6;
+}
+
+.cont-chip.active {
+  border-color: #ffd166;
+  background: rgba(255, 209, 102, 0.2);
+  color: #ffe8a3;
+}
+
+.cont-chip.rival {
+  border-color: #b84a4a;
+  background: rgba(184, 74, 74, 0.16);
+  color: #ff7b7b;
+}
+
+/* Spinning ASCII Globe */
+.globe-box {
+  background: #0c0f12;
+  border: 1px solid #4a3c34;
+  border-radius: 10px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 190px;
+}
+
+.ascii-globe {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.05;
+  color: #5e7387;
+  user-select: none;
+}
+
+.globe-ocean {
+  color: #46637d;
+}
+
+.globe-owned {
+  color: #57e389;
+  font-weight: 700;
+}
+
+.globe-active {
+  color: #ffd166;
+  font-weight: 700;
+}
+
+.globe-rival {
+  color: #ff6b6b;
+  font-weight: 700;
+}
+
+.globe-legend {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  margin-top: 5px;
+}
+
+.leg-owned { color: #57e389; }
+.leg-active { color: #ffd166; }
+.leg-rival { color: #ff6b6b; }
 
 .expand-btn {
   margin-top: 10px;
@@ -812,7 +1061,7 @@ button:disabled {
   border: 1px solid var(--border-btn);
   border-radius: 14px;
   padding: 24px;
-  max-width: 760px;
+  max-width: 780px;
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;

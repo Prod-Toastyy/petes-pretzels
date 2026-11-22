@@ -48,7 +48,7 @@
     };
   </script>
 
-  <!-- Global Conquest, Dominance & Achievements Hub Modal -->
+  <!-- Global Conquest, Spinning Globe & Achievements Hub Modal -->
   <div id="achievements-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="row-header">
@@ -56,25 +56,40 @@
         <button type="button" id="btn-close-achievements" class="close-small-btn">Close</button>
       </div>
 
-      <!-- Continent Expansion & Prestige Card -->
+      <!-- Continent Expansion, Spinning Globe & Prestige Card -->
       <div class="conquest-card">
-        <div class="conquest-top">
-          <div>
-            <div class="conquest-kicker">CURRENT TERRITORY (<span id="modal-continent-step">1/7</span>)</div>
-            <h3 id="modal-continent-name">[🌎] North America</h3>
+        <div class="conquest-main-split">
+          <div class="conquest-info-col">
+            <div class="conquest-top">
+              <div>
+                <div class="conquest-kicker">CURRENT TERRITORY (<span id="modal-continent-step">1/7</span>)</div>
+                <h3 id="modal-continent-name">[🌎] North America</h3>
+              </div>
+              <div class="gold-pretzel-pill">
+                [🥨★] <strong id="modal-gold-pretzels">0</strong> Golden Pretzels (<span id="modal-gold-bonus">+0%</span> Cash)
+              </div>
+            </div>
+
+            <p class="subtext" id="modal-conquest-reqs">
+              Requirements to expand to <strong id="modal-next-continent">South America</strong>: 100% Dominance, $50,000,000 Cash &amp; 10,000,000 Pretzels.
+            </p>
+
+            <div id="continent-status-pills" class="continent-pills-wrap"></div>
+
+            <button type="button" id="btn-expand-continent" class="expand-btn" disabled>
+              Expand to <span id="btn-next-continent-name">South America</span> (+<span id="btn-pending-gold">4</span> [🥨★])
+            </button>
           </div>
-          <div class="gold-pretzel-pill">
-            [🥨★] <strong id="modal-gold-pretzels">0</strong> Golden Pretzels (<span id="modal-gold-bonus">+0%</span> Cash)
+
+          <div class="globe-box">
+            <pre id="ascii-globe" class="ascii-globe"></pre>
+            <div class="globe-legend">
+              <span class="leg-owned">■ Owned</span>
+              <span class="leg-active">■ Target</span>
+              <span class="leg-rival">■ Rival</span>
+            </div>
           </div>
         </div>
-
-        <p class="subtext" id="modal-conquest-reqs">
-          Requirements to expand to <strong id="modal-next-continent">South America</strong>: 100% Dominance, $50,000,000 Cash &amp; 10,000,000 Pretzels.
-        </p>
-
-        <button type="button" id="btn-expand-continent" class="expand-btn" disabled>
-          Expand to <span id="btn-next-continent-name">South America</span> (+<span id="btn-pending-gold">4</span> [🥨★])
-        </button>
       </div>
 
       <!-- Dual Progress Bars -->
@@ -91,7 +106,7 @@
 
         <div class="progress-bar-block">
           <div class="progress-bar-label">
-            <span><strong>Achievements Unlocked</strong> (<span id="ach-count-modal">0</span>/<span id="ach-total-modal">14</span>)</span>
+            <span><strong>Achievements Unlocked</strong> (<span id="ach-count-modal">0</span>/<span id="ach-total-modal">28</span>)</span>
             <strong id="modal-ach-pct">0%</strong>
           </div>
           <div class="progress-track">
@@ -113,12 +128,8 @@
       </div>
 
       <div class="option-group" style="margin-bottom: 16px;">
-        <label for="select-theme">Color Theme</label>
-        <select id="select-theme" class="theme-select">
-          <option value="espresso">Warm Espresso (Default)</option>
-          <option value="terminal">Midnight Terminal</option>
-          <option value="copper">Bavarian Copper</option>
-        </select>
+        <label for="select-theme">Color Theme (Unlock More by Conquering Continents)</label>
+        <select id="select-theme" class="theme-select"></select>
       </div>
 
       <p class="subtext" style="margin-bottom: 14px;">

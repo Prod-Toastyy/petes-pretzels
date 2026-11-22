@@ -1,15 +1,60 @@
 const THEME_STORAGE_KEY = "petes_pretzels_theme";
 
-function applyTheme(themeId) {
-  document.body.classList.remove("theme-terminal", "theme-copper");
-  if (themeId === "terminal") {
-    document.body.classList.add("theme-terminal");
-  } else if (themeId === "copper") {
-    document.body.classList.add("theme-copper");
-  }
+const THEMES_CATALOG = [
+  { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0 },
+  { id: "terminal", name: "Midnight Terminal", minContinent: 0 },
+  { id: "copper", name: "Bavarian Copper", minContinent: 0 },
+  { id: "emerald", name: "Amazon Emerald", minContinent: 1, unlockLabel: "South America" },
+  { id: "indigo", name: "Royal Lye Indigo", minContinent: 2, unlockLabel: "Europe" },
+  { id: "sahara", name: "Sahara Gold", minContinent: 3, unlockLabel: "Africa" },
+  { id: "cyber", name: "Neon Tokyo Cyber", minContinent: 4, unlockLabel: "Asia" },
+  { id: "coral", name: "Coral Reef Teal", minContinent: 5, unlockLabel: "Oceania" },
+  { id: "glacial", name: "Glacial Cryo Frost", minContinent: 6, unlockLabel: "Antarctica" }
+];
+
+const ALL_THEME_CLASSES = [
+  "theme-terminal",
+  "theme-copper",
+  "theme-emerald",
+  "theme-indigo",
+  "theme-sahara",
+  "theme-cyber",
+  "theme-coral",
+  "theme-glacial"
+];
+
+function refreshThemeDropdown() {
   const select = document.getElementById("select-theme");
-  if (select) select.value = themeId || "espresso";
-  localStorage.setItem(THEME_STORAGE_KEY, themeId || "espresso");
+  if (!select) return;
+
+  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  const currentTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
+  select.innerHTML = "";
+
+  THEMES_CATALOG.forEach(t => {
+    const opt = document.createElement("option");
+    const unlocked = conqueredIdx >= t.minContinent;
+    opt.value = t.id;
+    opt.disabled = !unlocked;
+    opt.textContent = unlocked
+      ? t.name
+      : `🔒 ${t.name} (Conquer ${t.unlockLabel})`;
+    if (t.id === currentTheme) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+function applyTheme(themeId) {
+  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  const themeObj = THEMES_CATALOG.find(t => t.id === themeId) || THEMES_CATALOG[0];
+  const safeTheme = conqueredIdx >= themeObj.minContinent ? themeObj : THEMES_CATALOG[0];
+
+  document.body.classList.remove(...ALL_THEME_CLASSES);
+  if (safeTheme.id !== "espresso") {
+    document.body.classList.add(`theme-${safeTheme.id}`);
+  }
+  localStorage.setItem(THEME_STORAGE_KEY, safeTheme.id);
+  refreshThemeDropdown();
 }
 
 // Milestone Module Color Staging (10 / 25 / 50 / 100 thresholds)
@@ -501,6 +546,7 @@ let crosshairDir = 1;
 let lastAnimTime = null;
 let lastShotTime = 0;
 let controlsBound = false;
+let globeSpinTimer = 0;
 
 // Supply Chain Base Constants & Progressive Payroll Scaling
 const SALT_BASE_RATE = 40;
@@ -510,7 +556,7 @@ const SALT_BASE_PAYROLL = 12.00;
 const WHEAT_BASE_PAYROLL = 20.00;
 const REFINERY_BASE_PAYROLL = 45.00;
 
-// ASCII Plinko State (19 columns wide: indices 0..18 so burnt [X] sits well inside walls)
+// ASCII Plinko State (19 columns wide)
 const PLINKO_COLS = 19;
 const PLINKO_ROWS = 6;
 const PLINKO_COST = 50;
@@ -1014,6 +1060,7 @@ function applySessionUI() {
   setText("ascii-stage", getEvolvedAscii());
   hideEl("setup-modal");
 
+  refreshThemeDropdown();
   refreshRecipeDropdown();
   if (typeof AchievementManager !== "undefined") {
     AchievementManager.updateButtonCount();
@@ -1179,16 +1226,21 @@ function bindControls() {
     if (typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent()) {
       const earnedGold = GameState.expandToNextContinent();
       const newCont = GameState.getCurrentContinent();
+      const unlockedTheme = THEMES_CATALOG.find(t => t.minContinent === (GameState.continentIndex || 0));
+
       resetRegionalPanelsUI();
       updateDemand();
       applySessionUI();
       hideEl("achievements-modal");
-      logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!`);
+
+      const themeNotice = unlockedTheme ? ` New Theme Unlocked: ${unlockedTheme.name}!` : "";
+      logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!${themeNotice}`);
       render();
     }
   });
 
   onClick("player-badge", () => {
+    refreshThemeDropdown();
     showEl("restart-modal");
   });
 
@@ -1211,6 +1263,7 @@ function bindControls() {
     if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
       GameState.reset();
     }
+    applyTheme("espresso");
     resetRegionalPanelsUI();
     hideEl("restart-modal");
 
@@ -1436,7 +1489,6 @@ function render() {
   const wheatTier = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms);
   const refineryTier = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries);
 
-  // Header Continent & Golden Pretzel Pills
   if (typeof GameState.getCurrentContinent === "function") {
     const cont = GameState.getCurrentContinent();
     setText("header-continent-name", cont.name);
@@ -1460,7 +1512,6 @@ function render() {
   const wholeDough = Math.floor(GameState.dough);
   const batchSize = GameState.doughBatchSize || 500;
 
-  // Golden Rush Border Glow & Countdown
   const rushRemainingMs = (GameState.goldenRushEndTime || 0) - Date.now();
   if (rushRemainingMs > 0) {
     document.body.classList.add("golden-rush-active");
@@ -1486,7 +1537,6 @@ function render() {
   const doughEl = document.getElementById("dough-amount");
   if (doughEl) doughEl.classList.toggle("zero-danger", wholeDough <= 0);
 
-  // Unified Net Cash Flow (Sales minus Worker Payroll)
   const incomeLineEl = document.getElementById("income-rate-line");
   if (GameState.unlockedIncomeTicker && incomeLineEl) {
     showEl("income-rate-line");
@@ -1496,7 +1546,6 @@ function render() {
     setText("income-per-sec", Math.abs(liveCashPerSec).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   }
 
-  // Supply Chain UI
   if (GameState.unlockedSupplyChain) {
     showEl("system-supply-chain");
     const totalPayroll = getSupplyPayrollPerSec();
@@ -1552,7 +1601,6 @@ function render() {
   setDisabled("btn-bake", GameState.dough < 1);
   setText("knead-progress", GameState.kneadClicks);
 
-  // Plinko drop button state
   setDisabled("btn-drop-plinko", Boolean(plinkoBall) || wholeInventory < PLINKO_COST);
 
   const doughStatus = document.getElementById("dough-status");
@@ -1624,7 +1672,7 @@ function render() {
   });
 }
 
-// Frame-rate independent animation loop for Target Crosshair & ASCII Plinko
+// Frame-rate independent animation loop for Target Crosshair, Plinko & Spinning Globe
 function animateMinigames(timestamp) {
   if (lastAnimTime === null) lastAnimTime = timestamp;
   const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.1);
@@ -1686,6 +1734,17 @@ function animateMinigames(timestamp) {
         }
       }
     }
+
+    // 3. Rotate ASCII World Globe when modal is open
+    const achModal = document.getElementById("achievements-modal");
+    if (achModal && !achModal.classList.contains("hidden") && typeof renderSpinningGlobe === "function") {
+      globeSpinTimer += dt;
+      if (globeSpinTimer >= 0.16) {
+        globeSpinTimer = 0;
+        globeSpinOffset = (globeSpinOffset + 1) % 30;
+        renderSpinningGlobe();
+      }
+    }
   }
 
   requestAnimationFrame(animateMinigames);
@@ -1697,11 +1756,12 @@ function bootGame() {
     return;
   }
 
+  const offlineSeconds = GameState.load();
+  sanitizeNumbers();
+
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
   applyTheme(savedTheme);
 
-  const offlineSeconds = GameState.load();
-  sanitizeNumbers();
   updateDemand();
   initSetupPicker();
   bindControls();
@@ -1725,7 +1785,6 @@ function bootGame() {
 
     let tickNetCash = 0;
 
-    // Vertical Supply Chain & Progressive Worker Payroll Tick
     if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
       const tickPayroll = getSupplyPayrollPerSec() / 10;
       if (tickPayroll > 0 && GameState.funds >= tickPayroll) {
@@ -1783,7 +1842,6 @@ function bootGame() {
       pendingSales = 0;
     }
 
-    // Track net cash flow (sales minus worker payroll) over a smoothed 4-second rolling window
     const nowMs = Date.now();
     if (tickNetCash !== 0) {
       cashFlowHistory.push({ time: nowMs, amount: tickNetCash });
@@ -1794,7 +1852,6 @@ function bootGame() {
     const rawWindowRate = totalWindowCash / (windowMs / 1000);
     liveCashPerSec = (liveCashPerSec * 0.85) + (rawWindowRate * 0.15);
 
-    // Spawn occasional falling Golden Pretzels during 30s Golden Rush (capped at 3 on screen)
     if (GameState.isGoldenRushActive() && Math.random() < 0.025) {
       spawnFallingGoldenPretzel();
     }

@@ -96,8 +96,194 @@ const ACHIEVEMENTS_LIST = [
     title: "Pretzel Singularity",
     desc: "Bake 1,000,000 total pretzels.",
     check: (s) => s.pretzels >= 1000000
+  },
+
+  // Late-Game & Multi-Continent Conquest Achievements
+  {
+    id: "millionaire_baker",
+    icon: "[💰]",
+    title: "Seven-Figure Baker",
+    desc: "Hold $1,000,000.00 in cash at once.",
+    check: (s) => s.funds >= 1000000
+  },
+  {
+    id: "supply_magnate",
+    icon: "[⛓️]",
+    title: "Vertical Monopoly",
+    desc: "Own at least 10 Salt Mines, 10 Wheat Fields, and 10 Dough Refineries.",
+    check: (s) => s.saltMines >= 10 && s.wheatFarms >= 10 && s.refineries >= 10
+  },
+  {
+    id: "golden_standard",
+    icon: "[✨]",
+    title: "Solid Gold Hardware",
+    desc: "Upgrade any bakery or supply module to Tier IV Gold (100+ owned).",
+    check: (s) => s.extruders >= 100 || s.trucks >= 100 || s.drones >= 100 || s.promoLevel >= 100 || s.saltMines >= 100 || s.wheatFarms >= 100 || s.refineries >= 100
+  },
+  {
+    id: "ten_million_club",
+    icon: "[🏭]",
+    title: "Continental Producer",
+    desc: "Bake 10,000,000 lifetime pretzels across all territories.",
+    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 10000000
+  },
+  {
+    id: "first_conquest",
+    icon: "[🌎]",
+    title: "Beyond Borders",
+    desc: "Conquer North America and expand to South America.",
+    check: (s) => (s.continentIndex || 0) >= 1
+  },
+  {
+    id: "golden_hoard_10",
+    icon: "[🥨★]",
+    title: "Gilded Twist",
+    desc: "Accumulate 10 permanent Golden Pretzels.",
+    check: (s) => (s.goldenPretzels || 0) >= 10
+  },
+  {
+    id: "hundred_million_club",
+    icon: "[🚀]",
+    title: "Hundred-Million Twist",
+    desc: "Bake 100,000,000 lifetime pretzels across all territories.",
+    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 100000000
+  },
+  {
+    id: "hundred_million_cash",
+    icon: "[🏦]",
+    title: "Pretzel Hedge Fund",
+    desc: "Hold $100,000,000.00 in cash at once.",
+    check: (s) => s.funds >= 100000000
+  },
+  {
+    id: "four_continents",
+    icon: "[🧭]",
+    title: "Hemisphere Hegemon",
+    desc: "Reach the 4th territory (Africa) in your global conquest.",
+    check: (s) => (s.continentIndex || 0) >= 3
+  },
+  {
+    id: "golden_hoard_30",
+    icon: "[👑★]",
+    title: "Sovereign of Salt",
+    desc: "Accumulate 30 permanent Golden Pretzels.",
+    check: (s) => (s.goldenPretzels || 0) >= 30
+  },
+  {
+    id: "billion_pretzels",
+    icon: "[☄️]",
+    title: "One Billion Knots",
+    desc: "Bake 1,000,000,000 lifetime pretzels across all territories.",
+    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 1000000000
+  },
+  {
+    id: "world_conqueror",
+    icon: "[🌐]",
+    title: "World Domination",
+    desc: "Conquer all 7 continents and enter Global Franchise mode.",
+    check: (s) => (s.continentIndex || 0) >= 7
+  },
+  {
+    id: "ten_billion_cash",
+    icon: "[💎]",
+    title: "Decabillionaire Baker",
+    desc: "Hold $10,000,000,000.00 in cash at once.",
+    check: (s) => s.funds >= 10000000000
+  },
+  {
+    id: "ten_billion_pretzels",
+    icon: "[🪐]",
+    title: "Galactic Dough Singularity",
+    desc: "Bake 10,000,000,000 lifetime pretzels across all territories.",
+    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 10000000000
   }
 ];
+
+// Spinning ASCII Globe (30x11 cylindrical map projected onto a sphere)
+// Continent codes: 0=NA, 1=SA, 2=EU, 3=AF, 4=AS, 5=OC, 6=AN, .=Ocean
+const GLOBE_MAP = [
+  "..............................",
+  "..000000.......2222..4444444..",
+  ".00000000.....22222.444444444.",
+  "..000000.......222..44444444..",
+  "...0000........3333..444444...",
+  ".....1111.....333333..4444....",
+  ".....11111....333333..........",
+  "......1111.....3333......555..",
+  "......111.......33.......5555.",
+  "..............................",
+  "......666666666666666666......"
+];
+
+let globeSpinOffset = 0;
+
+function renderSpinningGlobe() {
+  const globeEl = document.getElementById("ascii-globe");
+  if (!globeEl) return;
+
+  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  const rows = GLOBE_MAP.length;
+  const mapW = GLOBE_MAP[0].length;
+  const radius = 5.2;
+  const outLines = [];
+
+  for (let y = 0; y < rows; y++) {
+    const dy = (y - (rows - 1) / 2) / ((rows - 1) / 2);
+    if (Math.abs(dy) > 1) continue;
+    const halfWidth = Math.round(Math.sqrt(Math.max(0, 1 - dy * dy)) * radius * 2.1);
+    const pad = " ".repeat(Math.max(0, 11 - halfWidth));
+    let lineHtml = pad;
+
+    for (let x = -halfWidth; x <= halfWidth; x++) {
+      const normX = halfWidth > 0 ? (x / halfWidth) : 0;
+      const angle = Math.asin(Math.max(-1, Math.min(1, normX)));
+      const mapCol = Math.floor(((angle / Math.PI + 0.5) * (mapW * 0.55) + globeSpinOffset) % mapW + mapW) % mapW;
+      const ch = GLOBE_MAP[y][mapCol];
+
+      if (x === -halfWidth || x === halfWidth) {
+        lineHtml += `<span class="globe-ocean">|</span>`;
+      } else if (ch === ".") {
+        lineHtml += `<span class="globe-ocean">·</span>`;
+      } else {
+        const contId = parseInt(ch, 10);
+        if (contId < conqueredIdx) {
+          lineHtml += `<span class="globe-owned">#</span>`;
+        } else if (contId === conqueredIdx) {
+          lineHtml += `<span class="globe-active">@</span>`;
+        } else {
+          lineHtml += `<span class="globe-rival">%</span>`;
+        }
+      }
+    }
+    outLines.push(lineHtml);
+  }
+
+  globeEl.innerHTML = outLines.join("\n");
+}
+
+function renderContinentStatusChips() {
+  const wrap = document.getElementById("continent-status-pills");
+  if (!wrap || typeof CONTINENTS === "undefined") return;
+
+  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  wrap.innerHTML = "";
+
+  CONTINENTS.forEach((c, idx) => {
+    const chip = document.createElement("span");
+    let cls = "rival";
+    let prefix = "✖";
+    if (idx < conqueredIdx) {
+      cls = "owned";
+      prefix = "✔";
+    } else if (idx === conqueredIdx) {
+      cls = "active";
+      prefix = "★";
+    }
+    chip.className = `cont-chip ${cls}`;
+    chip.textContent = `${prefix} ${c.name}`;
+    wrap.appendChild(chip);
+  });
+}
 
 const AchievementManager = {
   queue: [],
@@ -311,6 +497,8 @@ const AchievementManager = {
 
     const unlocked = this.getUnlockedIds();
     this.updateButtonCount();
+    renderContinentStatusChips();
+    renderSpinningGlobe();
     listEl.innerHTML = "";
 
     ACHIEVEMENTS_LIST.forEach(ach => {
