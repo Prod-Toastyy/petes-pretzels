@@ -282,8 +282,6 @@ body.theme-coral {
   --accent: #38d6e8;
   --accent-hover: #59e4f5;
   --accent-text: #061418;
-  --money-green: #6ee79c;
-  --trophy-gold: #ffd23f;
   --btn-bg: #193842;
   --btn-hover: #224c59;
   --btn-border: #316c7d;
@@ -351,6 +349,118 @@ body.theme-gold-solid {
   --rp-bg: #362e0c;
   --rp-border: #f5c842;
   --rp-text: #fff0a8;
+}
+
+/* Diamond Sparkly Theme (Beat full run in under 1 hour) */
+@keyframes diamondFacetShimmer {
+  0%   { border-color: #9be7ff; box-shadow: 0 0 12px rgba(155, 231, 255, 0.25), inset 0 0 8px rgba(255, 255, 255, 0.08); }
+  50%  { border-color: #ffffff; box-shadow: 0 0 18px rgba(196, 244, 255, 0.45), inset 0 0 12px rgba(255, 255, 255, 0.16); }
+  100% { border-color: #7cc4fa; box-shadow: 0 0 12px rgba(124, 196, 250, 0.25), inset 0 0 8px rgba(255, 255, 255, 0.08); }
+}
+
+@keyframes diamondSparkleTwinkle {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 4px rgba(185, 242, 255, 0.35)); }
+  50% { filter: brightness(1.22) drop-shadow(0 0 10px rgba(255, 255, 255, 0.75)); }
+}
+
+body.theme-diamond-sparkly {
+  --bg-page: #08121c;
+  --bg-surface: #0e1f30;
+  --bg-module: #142b42;
+  --bg-track: #050c14;
+  --bg-input: #050c14;
+  --bg-modal-backdrop: rgba(4, 10, 18, 0.88);
+  --bg-toast: #11253a;
+  --text-main: #f0faff;
+  --text-muted: #9ec9e6;
+  --border-panel: #4987b8;
+  --border-module: #64aad9;
+  --border-modal: #9be7ff;
+  --accent: #b8ecff;
+  --accent-hover: #e3f8ff;
+  --accent-text: #06121c;
+  --money-green: #6ee79c;
+  --trophy-gold: #ffd23f;
+  --btn-bg: #1b3854;
+  --btn-hover: #254b70;
+  --btn-border: #7cc4fa;
+  --danger-bg: #6b2535;
+  --danger-hover: #873044;
+  --danger-border: #a83e57;
+  --rp-bg: #14364a;
+  --rp-border: #8ce4ff;
+  --rp-text: #c9f4ff;
+  background-image:
+    radial-gradient(2px 2px at 14% 20%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 33% 68%, rgba(184, 236, 255, 0.85), transparent),
+    radial-gradient(2px 2px at 57% 30%, rgba(255, 255, 255, 0.95), transparent),
+    radial-gradient(1.5px 1.5px at 79% 74%, rgba(155, 231, 255, 0.85), transparent),
+    radial-gradient(2px 2px at 90% 22%, rgba(255, 255, 255, 0.9), transparent);
+}
+
+body.theme-diamond-sparkly .row-panel,
+body.theme-diamond-sparkly header,
+body.theme-diamond-sparkly #console-box,
+body.theme-diamond-sparkly .top-stat-badge,
+body.theme-diamond-sparkly .module-box {
+  animation: diamondFacetShimmer 3.2s ease-in-out infinite;
+}
+
+body.theme-diamond-sparkly #ascii-stage,
+body.theme-diamond-sparkly .top-ach-btn {
+  animation: diamondSparkleTwinkle 2.2s ease-in-out infinite;
+}
+
+/* Moving RGB Theme (Unlocked after getting all achievements) */
+@keyframes rgbHueCycle {
+  0%   { filter: hue-rotate(0deg) saturate(1.25); }
+  50%  { filter: hue-rotate(180deg) saturate(1.35); }
+  100% { filter: hue-rotate(360deg) saturate(1.25); }
+}
+
+@keyframes rgbBorderSweep {
+  0%   { border-color: #ff5964; box-shadow: 0 0 12px rgba(255, 89, 100, 0.22); }
+  25%  { border-color: #ffd166; box-shadow: 0 0 12px rgba(255, 209, 102, 0.22); }
+  50%  { border-color: #06d6a0; box-shadow: 0 0 12px rgba(6, 214, 160, 0.22); }
+  75%  { border-color: #118ab2; box-shadow: 0 0 12px rgba(17, 138, 178, 0.22); }
+  100% { border-color: #b565f2; box-shadow: 0 0 12px rgba(181, 101, 242, 0.22); }
+}
+
+body.theme-rgb-rainbow {
+  --bg-page: #111018;
+  --bg-surface: #191724;
+  --bg-module: #221f30;
+  --bg-track: #0c0b12;
+  --bg-input: #0c0b12;
+  --bg-modal-backdrop: rgba(8, 7, 13, 0.86);
+  --bg-toast: #1e1b2c;
+  --text-main: #f6f3ff;
+  --text-muted: #b5aecf;
+  --border-panel: #453f66;
+  --border-module: #585082;
+  --border-modal: #786eb0;
+  --accent: #ff6b8b;
+  --accent-hover: #ff8ca5;
+  --accent-text: #120d18;
+  --money-green: #6ee79c;
+  --trophy-gold: #ffd23f;
+  --btn-bg: #2b273d;
+  --btn-hover: #393452;
+  --btn-border: #625991;
+  --danger-bg: #6b2535;
+  --danger-hover: #873044;
+  --danger-border: #a83e57;
+  --rp-bg: #1c2e3d;
+  --rp-border: #56cfe1;
+  --rp-text: #b8f2ff;
+  animation: rgbHueCycle 8s linear infinite;
+}
+
+body.theme-rgb-rainbow .row-panel,
+body.theme-rgb-rainbow header,
+body.theme-rgb-rainbow #console-box,
+body.theme-rgb-rainbow .top-stat-badge {
+  animation: rgbBorderSweep 6s linear infinite;
 }
 
 * {
@@ -696,7 +806,6 @@ h1 {
   transition: transform 0.2s ease, border-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
 }
 
-/* Progressive ASCII animation tiers as Regional Dominance approaches 100% */
 .ascii-anim-tier-1 {
   animation: asciiPulseSoft 2.8s ease-in-out infinite;
 }
@@ -759,7 +868,7 @@ h1 {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .row-header {
@@ -771,8 +880,28 @@ h1 {
   margin-bottom: 12px;
 }
 
-.row-header > h2 {
+.row-panel.collapsed .row-header {
   margin-bottom: 0;
+}
+
+.row-panel.collapsed .section-body {
+  display: none;
+}
+
+.section-collapse-btn {
+  padding: 3px 9px;
+  font-size: 13px;
+  line-height: 1.2;
+  background: var(--bg-module);
+  border: 1px solid var(--btn-border);
+  color: var(--text-main);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.section-collapse-btn:hover:not(:disabled) {
+  background: var(--btn-hover);
+  border-color: var(--accent);
 }
 
 .supply-header-right {

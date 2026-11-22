@@ -34,7 +34,7 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA.6.2 • EARTH CONQUEST EDITION</div>
+    <div class="intro-bottom-version">BETA.7.1 • EARTH CONQUEST EDITION</div>
   </div>
 
   <!-- Start Setup -->
@@ -263,7 +263,7 @@
       </div>
 
       <div class="option-group" style="margin-bottom: 16px;">
-        <label for="select-theme">Color Theme (Unlocked Themes Stay Unlocked After Prestige)</label>
+        <label for="select-theme">Color Theme (Unlock All 28 Achievements for Moving RGB)</label>
         <select id="select-theme" class="theme-select"></select>
       </div>
 
@@ -342,8 +342,11 @@
 
     <!-- Row 1: Production -->
     <section class="row-panel" id="row-production">
-      <h2>[🔥] Production</h2>
-      <div class="row-items">
+      <div class="row-header">
+        <h2>[🔥] Production</h2>
+        <button type="button" id="btn-collapse-row-production" class="section-collapse-btn" data-section="row-production" aria-expanded="true" title="Collapse or expand Production">▾</button>
+      </div>
+      <div class="row-items section-body">
 
         <div class="module-box">
           <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
@@ -413,9 +416,10 @@
             Payroll: -$<strong id="supply-payroll-badge">0.00</strong>/sec
           </span>
           <button type="button" id="btn-toggle-supply" class="close-small-btn">Operations: ON</button>
+          <button type="button" id="btn-collapse-system-supply-chain" class="section-collapse-btn" data-section="system-supply-chain" aria-expanded="true" title="Collapse or expand Supply Chain">▾</button>
         </div>
       </div>
-      <div class="row-items">
+      <div class="row-items section-body">
 
         <div class="module-box" id="module-salt-mine">
           <div class="module-head">
@@ -461,8 +465,11 @@
 
     <!-- Row 3: Delivery -->
     <section class="row-panel hidden" id="system-delivery">
-      <h2>[⛟] Delivery</h2>
-      <div class="row-items">
+      <div class="row-header">
+        <h2>[⛟] Delivery</h2>
+        <button type="button" id="btn-collapse-system-delivery" class="section-collapse-btn" data-section="system-delivery" aria-expanded="true" title="Collapse or expand Delivery">▾</button>
+      </div>
+      <div class="row-items section-body">
 
         <div class="module-box hidden" id="panel-trucks">
           <div class="module-head">
@@ -497,12 +504,13 @@
     <section class="row-panel hidden" id="panel-projects">
       <div class="row-header">
         <h2>[⚗] R&amp;D</h2>
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div class="supply-header-right">
           <span id="rd-progress-badge" class="rp-badge">R&amp;D: <strong id="rd-completed-count">0</strong>/<strong id="rd-total-count">0</strong></span>
           <span id="rp-badge" class="rp-badge hidden">Research Points: <strong id="rp-total">0</strong> RP</span>
+          <button type="button" id="btn-collapse-panel-projects" class="section-collapse-btn" data-section="panel-projects" aria-expanded="true" title="Collapse or expand R&D">▾</button>
         </div>
       </div>
-      <div class="row-items">
+      <div class="row-items section-body">
 
         <!-- Multi-Target Ballistic Dough Tester Box -->
         <div class="module-box hidden" id="panel-minigame">

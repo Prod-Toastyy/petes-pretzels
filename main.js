@@ -1,24 +1,29 @@
 const THEME_STORAGE_KEY = "petes_pretzels_theme";
+const COLLAPSED_SECTIONS_KEY = "petes_pretzels_collapsed_sections_v1";
 
 const THEMES_CATALOG = [
-  { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0, requiresGoldUi: false },
-  { id: "computer-green", name: "Computer Green", minContinent: 0, requiresGoldUi: false },
-  { id: "light-mode", name: "Light Mode", minContinent: 0, requiresGoldUi: false },
-  { id: "terminal", name: "Midnight Terminal", minContinent: 0, requiresGoldUi: false },
-  { id: "copper", name: "Bavarian Copper", minContinent: 0, requiresGoldUi: false },
-  { id: "emerald", name: "Amazon Emerald", minContinent: 1, unlockLabel: "South America", requiresGoldUi: false },
-  { id: "indigo", name: "Royal Lye Indigo", minContinent: 2, unlockLabel: "Europe", requiresGoldUi: false },
-  { id: "sahara", name: "Sahara Gold", minContinent: 3, unlockLabel: "Africa", requiresGoldUi: false },
-  { id: "cyber", name: "Neon Tokyo Cyber", minContinent: 4, unlockLabel: "Asia", requiresGoldUi: false },
-  { id: "coral", name: "Coral Reef Teal", minContinent: 5, unlockLabel: "Oceania", requiresGoldUi: false },
-  { id: "glacial", name: "Glacial Cryo Frost", minContinent: 6, unlockLabel: "Antarctica", requiresGoldUi: false },
-  { id: "gold-solid", name: "Solid Gold UI", minContinent: 7, unlockLabel: "Final World", requiresGoldUi: true }
+  { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "computer-green", name: "Computer Green", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "light-mode", name: "Light Mode", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "terminal", name: "Midnight Terminal", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "copper", name: "Bavarian Copper", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "emerald", name: "Amazon Emerald", minContinent: 1, unlockLabel: "South America", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "indigo", name: "Royal Lye Indigo", minContinent: 2, unlockLabel: "Europe", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "sahara", name: "Sahara Gold", minContinent: 3, unlockLabel: "Africa", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "cyber", name: "Neon Tokyo Cyber", minContinent: 4, unlockLabel: "Asia", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "coral", name: "Coral Reef Teal", minContinent: 5, unlockLabel: "Oceania", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "glacial", name: "Glacial Cryo Frost", minContinent: 6, unlockLabel: "Antarctica", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "gold-solid", name: "Solid Gold UI", minContinent: 7, unlockLabel: "Final World", requiresGoldUi: true, requiresAllAchievements: false, requiresSubHourWin: false },
+  { id: "diamond-sparkly", name: "Diamond Sparkly", minContinent: 0, unlockLabel: "Beat Full Run in < 1h", requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: true },
+  { id: "rgb-rainbow", name: "Moving RGB Rainbow", minContinent: 0, unlockLabel: "All Achievements", requiresGoldUi: false, requiresAllAchievements: true, requiresSubHourWin: false }
 ];
 
 const ALL_THEME_CLASSES = [
   "theme-computer-green",
   "theme-light-mode",
   "theme-gold-solid",
+  "theme-diamond-sparkly",
+  "theme-rgb-rainbow",
   "theme-terminal",
   "theme-copper",
   "theme-emerald",
@@ -27,6 +32,13 @@ const ALL_THEME_CLASSES = [
   "theme-cyber",
   "theme-coral",
   "theme-glacial"
+];
+
+const COLLAPSIBLE_SECTION_IDS = [
+  "row-production",
+  "system-supply-chain",
+  "system-delivery",
+  "panel-projects"
 ];
 
 const domCache = new Map();
@@ -74,6 +86,67 @@ function onClick(id, handler) {
   if (el) el.addEventListener("click", handler);
 }
 
+function hasAllAchievementsUnlocked() {
+  if (typeof AchievementManager === "undefined" || typeof ACHIEVEMENTS_LIST === "undefined") return false;
+  return AchievementManager.getUnlockedIds().length >= ACHIEVEMENTS_LIST.length;
+}
+
+function hasSubHourFullRunWin() {
+  if (typeof GameState === "undefined") return false;
+  const bestSecs = Number(GameState.bestRunSeconds || 0);
+  const reachedFinal = Boolean(GameState.goldUiUnlocked) || Math.max(GameState.continentIndex || 0, GameState.highestContinentReached || 0) >= 7;
+  return reachedFinal && bestSecs > 0 && bestSecs <= 3600;
+}
+
+function readCollapsedSections() {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_SECTIONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeCollapsedSections(mapObj) {
+  try {
+    localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify(mapObj));
+  } catch (e) {
+    console.error("Failed to save section collapse state:", e);
+  }
+}
+
+function setSectionCollapsed(sectionId, collapsed, persist = true) {
+  const sec = getEl(sectionId);
+  const btn = getEl(`btn-collapse-${sectionId}`);
+  const isCollapsed = Boolean(collapsed);
+  if (sec) sec.classList.toggle("collapsed", isCollapsed);
+  if (btn) {
+    btn.textContent = isCollapsed ? "▸" : "▾";
+    btn.setAttribute("aria-expanded", String(!isCollapsed));
+  }
+  if (persist) {
+    const stateMap = readCollapsedSections();
+    stateMap[sectionId] = isCollapsed;
+    writeCollapsedSections(stateMap);
+  }
+}
+
+function applySavedSectionCollapseStates() {
+  const stateMap = readCollapsedSections();
+  COLLAPSIBLE_SECTION_IDS.forEach(id => {
+    setSectionCollapsed(id, Boolean(stateMap[id]), false);
+  });
+}
+
+function toggleSectionCollapsed(sectionId) {
+  const sec = getEl(sectionId);
+  if (!sec) return;
+  const nextCollapsed = !sec.classList.contains("collapsed");
+  setSectionCollapsed(sectionId, nextCollapsed, true);
+}
+
 function triggerScreenShake() {
   document.body.classList.remove("screen-shake");
   void document.body.offsetWidth;
@@ -118,6 +191,12 @@ function getUnlockedThemeTier() {
 }
 
 function isThemeUnlocked(themeObj) {
+  if (themeObj.requiresAllAchievements) {
+    return hasAllAchievementsUnlocked();
+  }
+  if (themeObj.requiresSubHourWin) {
+    return hasSubHourFullRunWin();
+  }
   const unlockedTier = getUnlockedThemeTier();
   const hasGoldUi = typeof GameState !== "undefined" ? Boolean(GameState.goldUiUnlocked) : false;
   if (themeObj.requiresGoldUi) {
@@ -140,7 +219,7 @@ function refreshThemeDropdown() {
     opt.disabled = !unlocked;
     opt.textContent = unlocked
       ? t.name
-      : `🔒 ${t.name} (Conquer ${t.unlockLabel})`;
+      : `🔒 ${t.name} (${t.unlockLabel})`;
     if (t.id === currentTheme) opt.selected = true;
     select.appendChild(opt);
   });
@@ -253,6 +332,7 @@ function executeFullWipe() {
   if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
     GameState.reset(true);
   }
+  localStorage.removeItem(COLLAPSED_SECTIONS_KEY);
   applyTheme("espresso");
   resetRegionalPanelsUI();
   hideEl("confirm-action-modal");
@@ -1578,6 +1658,50 @@ function updateDemand() {
   GameState.demand = Math.max(1, Math.round(rawDemand));
 }
 
+function getDominanceForStage() {
+  if (typeof AchievementManager !== "undefined" && typeof AchievementManager.getDominancePercent === "function") {
+    return AchievementManager.getDominancePercent();
+  }
+  return 0;
+}
+
+function getEvolvedAscii() {
+  const gallery = getGallery();
+  const base = gallery[GameState.selectedAsciiIndex] || gallery[0];
+  const domPct = getDominanceForStage();
+  const sparkFrame = ["✦", "✧", "★", "·"][Math.floor(Date.now() / 350) % 4];
+
+  if (domPct >= 100) {
+    return `👑 ═══ KING OF PRETZELS ═══ 👑\n${sparkFrame} ${base} ${sparkFrame}\n👑 ════ 100% DOMINANCE ════ 👑`;
+  }
+  if (domPct >= 75) {
+    return `${sparkFrame} ─── ${domPct}% NEAR CROWN ─── ${sparkFrame}\n${base}\n✦ ─────────────────────── ✦`;
+  }
+  if (domPct >= 40) {
+    return `· ${sparkFrame} ── ${domPct}% CONQUEST ── ${sparkFrame} ·\n${base}`;
+  }
+  if (domPct >= 15) {
+    return `  ·  ${sparkFrame}  ·  \n${base}`;
+  }
+  return base;
+}
+
+function applyStageAnimationTier(domPct) {
+  const asciiEl = getEl("ascii-stage");
+  if (!asciiEl) return;
+
+  asciiEl.classList.remove("ascii-sway", "ascii-anim-tier-1", "ascii-anim-tier-2", "ascii-anim-tier-3", "ascii-anim-king");
+  if (domPct >= 100) {
+    asciiEl.classList.add("ascii-anim-king");
+  } else if (domPct >= 75) {
+    asciiEl.classList.add("ascii-anim-tier-3");
+  } else if (domPct >= 40) {
+    asciiEl.classList.add("ascii-anim-tier-2");
+  } else if (domPct >= 15) {
+    asciiEl.classList.add("ascii-anim-tier-1");
+  }
+}
+
 function getActiveRangeTargets() {
   const count = Math.max(1, Math.min(5, GameState.rangeTargetCount || 1));
   const targets = [];
@@ -1836,6 +1960,8 @@ function resetRegionalPanelsUI() {
 
   const projectsList = getEl("projects-list");
   if (projectsList) projectsList.innerHTML = "";
+
+  applySavedSectionCollapseStates();
 }
 
 function applySessionUI() {
@@ -1848,6 +1974,7 @@ function applySessionUI() {
 
   refreshThemeDropdown();
   refreshRecipeDropdown();
+  applySavedSectionCollapseStates();
   if (typeof AchievementManager !== "undefined") {
     AchievementManager.updateButtonCount();
   }
@@ -1891,14 +2018,20 @@ function completeContinentExpansion() {
   hideEl("achievements-modal");
 
   if (conqueringFinalWorld) {
-    applyTheme("gold-solid");
-    logMessage(`EARTH CONQUERED! Unlocked Solid Gold UI & banked +${earnedGold} Golden Pretzels [🥨★]! Pete Pretzel sent a letter.`);
+    const fastRunSecs = recordsBeforeReset.runSecs || Math.floor(GameState.bestRunSeconds || 0);
+    if (fastRunSecs > 0 && fastRunSecs <= 3600) {
+      applyTheme("diamond-sparkly");
+      logMessage(`SUB-HOUR EARTH CONQUEST! Unlocked Diamond Sparkly theme & banked +${earnedGold} Golden Pretzels [🥨★]!`);
+    } else {
+      applyTheme("gold-solid");
+      logMessage(`EARTH CONQUERED! Unlocked Solid Gold UI & banked +${earnedGold} Golden Pretzels [🥨★]! Pete Pretzel sent a letter.`);
+    }
     render();
     openEndingModal(recordsBeforeReset);
     return;
   }
 
-  const unlockedTheme = THEMES_CATALOG.find(t => !t.requiresGoldUi && t.minContinent === (GameState.continentIndex || 0));
+  const unlockedTheme = THEMES_CATALOG.find(t => !t.requiresGoldUi && !t.requiresAllAchievements && !t.requiresSubHourWin && t.minContinent === (GameState.continentIndex || 0));
   const themeNotice = unlockedTheme ? ` New Theme Unlocked: ${unlockedTheme.name}!` : "";
   logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!${themeNotice}`);
   render();
@@ -1907,6 +2040,10 @@ function completeContinentExpansion() {
 function bindControls() {
   if (controlsBound) return;
   controlsBound = true;
+
+  COLLAPSIBLE_SECTION_IDS.forEach(secId => {
+    onClick(`btn-collapse-${secId}`, () => toggleSectionCollapsed(secId));
+  });
 
   onClick("intro-pretzel-trigger", () => {
     hideEl("title-intro-screen");
@@ -1920,8 +2057,8 @@ function bindControls() {
 
   onClick("btn-prestige-next-loop", () => {
     hideEl("ending-modal");
-    applyTheme("gold-solid");
-    logMessage("New Earth Prestige Loop started with Solid Gold UI and all Golden Pretzels intact!");
+    applyTheme(hasSubHourFullRunWin() ? "diamond-sparkly" : "gold-solid");
+    logMessage("New Earth Prestige Loop started with all Golden Pretzels and themes intact!");
     render();
   });
 
@@ -2383,6 +2520,8 @@ function checkUnlocks() {
 }
 
 function render() {
+  refreshThemeDropdown();
+
   const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
   const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
   const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
@@ -2693,6 +2832,7 @@ async function bootGame() {
 
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
   applyTheme(savedTheme);
+  applySavedSectionCollapseStates();
 
   updateDemand();
   initSetupPicker();
