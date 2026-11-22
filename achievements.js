@@ -114,6 +114,25 @@ const AchievementManager = {
     return 1 + (this.getUnlockedIds().length * 0.01);
   },
 
+  getAchievementPercent() {
+    if (ACHIEVEMENTS_LIST.length === 0) return 0;
+    return Math.min(100, Math.round((this.getUnlockedIds().length / ACHIEVEMENTS_LIST.length) * 100));
+  },
+
+  getDominancePercent() {
+    if (typeof GameState === "undefined") return 0;
+    // Weighted regional dominance toward New Store / Continent Conquest ($50M + 10M pretzels + R&D + Supply Chain)
+    const pretzelProg = Math.min(1, (GameState.pretzels || 0) / 10000000);
+    const fundsProg = Math.min(1, (GameState.funds || 0) / 50000000);
+    const totalProjects = (typeof Projects !== "undefined" && Projects.length > 0) ? Projects.length : 31;
+    const researchProg = Math.min(1, (GameState.completedProjects?.length || 0) / totalProjects);
+    const supplyUnits = (GameState.saltMines || 0) + (GameState.wheatFarms || 0) + (GameState.refineries || 0);
+    const supplyProg = Math.min(1, supplyUnits / 30);
+
+    const weighted = (pretzelProg * 0.35) + (fundsProg * 0.35) + (researchProg * 0.15) + (supplyProg * 0.15);
+    return Math.min(100, Math.round(weighted * 100));
+  },
+
   playDing() {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -214,14 +233,31 @@ const AchievementManager = {
   },
 
   updateButtonCount() {
-    const countEl = document.getElementById("ach-count");
-    const totalEl = document.getElementById("ach-total");
-    const bonusEl = document.getElementById("ach-bonus-pct");
     const unlockedCount = this.getUnlockedIds().length;
+    const achPct = this.getAchievementPercent();
+    const domPct = this.getDominancePercent();
 
-    if (countEl) countEl.textContent = unlockedCount;
-    if (totalEl) totalEl.textContent = ACHIEVEMENTS_LIST.length;
+    const topDomEl = document.getElementById("top-dom-pct");
+    const topAchEl = document.getElementById("top-ach-pct");
+    const bonusEl = document.getElementById("ach-bonus-pct");
+
+    if (topDomEl) topDomEl.textContent = `${domPct}%`;
+    if (topAchEl) topAchEl.textContent = `${achPct}%`;
     if (bonusEl) bonusEl.textContent = `+${unlockedCount}%`;
+
+    const modalDomPct = document.getElementById("modal-dom-pct");
+    const modalDomFill = document.getElementById("modal-dom-fill");
+    const modalAchPct = document.getElementById("modal-ach-pct");
+    const modalAchFill = document.getElementById("modal-ach-fill");
+    const countModal = document.getElementById("ach-count-modal");
+    const totalModal = document.getElementById("ach-total-modal");
+
+    if (modalDomPct) modalDomPct.textContent = `${domPct}%`;
+    if (modalDomFill) modalDomFill.style.width = `${domPct}%`;
+    if (modalAchPct) modalAchPct.textContent = `${achPct}%`;
+    if (modalAchFill) modalAchFill.style.width = `${achPct}%`;
+    if (countModal) countModal.textContent = unlockedCount;
+    if (totalModal) totalModal.textContent = ACHIEVEMENTS_LIST.length;
   },
 
   renderModal() {

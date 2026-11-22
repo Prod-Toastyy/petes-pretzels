@@ -48,13 +48,37 @@
     };
   </script>
 
-  <!-- Achievements Modal -->
+  <!-- Dominance & Achievements Hub Modal -->
   <div id="achievements-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="row-header">
-        <h2>[🏆] Achievements (<span id="ach-bonus-pct">+0%</span> Income Bonus)</h2>
+        <h2>[🏆] Progress & Achievements (<span id="ach-bonus-pct">+0%</span> Income Bonus)</h2>
         <button type="button" id="btn-close-achievements" class="close-small-btn">Close</button>
       </div>
+
+      <!-- Dual Progress Bars -->
+      <div class="progress-hub-bars">
+        <div class="progress-bar-block">
+          <div class="progress-bar-label">
+            <span><strong>Regional Dominance</strong> (Target: 10M Pretzels, $50M Cash, R&D & Supply)</span>
+            <strong id="modal-dom-pct">0%</strong>
+          </div>
+          <div class="progress-track">
+            <div id="modal-dom-fill" class="progress-fill dom-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <div class="progress-bar-block">
+          <div class="progress-bar-label">
+            <span><strong>Achievements Unlocked</strong> (<span id="ach-count-modal">0</span>/<span id="ach-total-modal">14</span>)</span>
+            <strong id="modal-ach-pct">0%</strong>
+          </div>
+          <div class="progress-track">
+            <div id="modal-ach-fill" class="progress-fill ach-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="achievements-grid" class="ach-grid"></div>
     </div>
   </div>
@@ -101,8 +125,8 @@
       <span class="badge-label">Funds</span>
       <span class="badge-value">$<span id="top-funds">0.00</span></span>
     </div>
-    <button type="button" id="btn-open-achievements" class="top-ach-btn">
-      [🏆] <span id="ach-count">0</span>/<span id="ach-total">14</span>
+    <button type="button" id="btn-open-achievements" class="top-ach-btn" title="Dominance & Achievements">
+      [🏆] Dom: <span id="top-dom-pct">0%</span> | Ach: <span id="top-ach-pct">0%</span>
     </button>
     <button type="button" id="player-badge" class="player-badge-btn" title="Bakery Options">
       <span id="display-player-name"></span>
@@ -129,8 +153,7 @@
         <div class="module-box">
           <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
           <p class="big-stat-line">Unsold Inventory: <strong id="inventory" class="big-stat-num">0</strong></p>
-          <p id="income-rate-line" class="income-rate-line hidden">Cash Flow: <strong>+$<span id="income-per-sec">0.00</span>/sec</strong></p>
-          <p id="payroll-rate-line" class="payroll-rate-line hidden">Worker Payroll: <strong>-$<span id="payroll-per-sec">0.00</span>/sec</strong></p>
+          <p id="income-rate-line" class="income-rate-line hidden">Cash Flow: <strong><span id="income-sign">+$</span><span id="income-per-sec">0.00</span>/sec</strong></p>
           <div id="recipe-box" class="recipe-row hidden">
             <label for="select-recipe" class="subtext">Menu:</label>
             <select id="select-recipe"></select>
@@ -186,7 +209,7 @@
       <div class="row-header">
         <h2>[⛓️] Supply Chain & Workers</h2>
         <div class="supply-header-right">
-          <span class="supply-stock-pill">Salt: <strong id="salt-stock">0</strong> lbs | Wheat: <strong id="wheat-stock">0</strong> lbs</span>
+          <span class="supply-stock-pill">Salt: <strong id="salt-stock">0</strong> lbs | Wheat: <strong id="wheat-stock">0</strong> lbs | Payroll: -$<strong id="supply-payroll-badge">0.00</strong>/sec</span>
           <button type="button" id="btn-toggle-supply" class="close-small-btn">Operations: ON</button>
         </div>
       </div>
@@ -197,8 +220,11 @@
             <p><strong>[⛏️] Rock Salt Mines: <span id="salt-mine-count">0</span></strong></p>
             <span id="salt-mine-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
-          <button id="btn-buy-salt-mine">Open Mine ($<span id="salt-mine-cost">2,500.00</span>)</button>
-          <p class="subtext">+<span id="salt-mine-rate">40</span> lbs salt/sec • Payroll: -$2.50/sec • <span id="salt-mine-next">Next: 10</span></p>
+          <div class="btn-row">
+            <button id="btn-buy-salt-mine">Open ($<span id="salt-mine-cost">2,500.00</span>)</button>
+            <button id="btn-sell-salt-mine" class="sell-btn" disabled>Sell (+$<span id="salt-mine-sell-val">0.00</span>)</button>
+          </div>
+          <p class="subtext">+<span id="salt-mine-rate">40</span> salt/sec • Payroll: -$<span id="salt-mine-payroll">0.00</span>/sec • <span id="salt-mine-next">Next: 10</span></p>
         </div>
 
         <div class="module-box" id="module-wheat-farm">
@@ -206,8 +232,11 @@
             <p><strong>[🌾] Winter Wheat Fields: <span id="wheat-farm-count">0</span></strong></p>
             <span id="wheat-farm-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
-          <button id="btn-buy-wheat-farm">Plant Field ($<span id="wheat-farm-cost">4,000.00</span>)</button>
-          <p class="subtext">+<span id="wheat-farm-rate">60</span> lbs wheat/sec • Payroll: -$4.00/sec • <span id="wheat-farm-next">Next: 10</span></p>
+          <div class="btn-row">
+            <button id="btn-buy-wheat-farm">Plant ($<span id="wheat-farm-cost">4,000.00</span>)</button>
+            <button id="btn-sell-wheat-farm" class="sell-btn" disabled>Sell (+$<span id="wheat-farm-sell-val">0.00</span>)</button>
+          </div>
+          <p class="subtext">+<span id="wheat-farm-rate">60</span> wheat/sec • Payroll: -$<span id="wheat-farm-payroll">0.00</span>/sec • <span id="wheat-farm-next">Next: 10</span></p>
         </div>
 
         <div class="module-box" id="module-refinery">
@@ -215,8 +244,11 @@
             <p><strong>[🏭] Dough Refineries: <span id="refinery-count">0</span></strong></p>
             <span id="refinery-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
-          <button id="btn-buy-refinery">Build Refinery ($<span id="refinery-cost">8,500.00</span>)</button>
-          <p class="subtext">Refines <span id="refinery-rate">80</span> lbs/sec (1 Salt + 1 Wheat) • Payroll: -$8.50/sec • <span id="refinery-next">Next: 10</span></p>
+          <div class="btn-row">
+            <button id="btn-buy-refinery">Build ($<span id="refinery-cost">8,500.00</span>)</button>
+            <button id="btn-sell-refinery" class="sell-btn" disabled>Sell (+$<span id="refinery-sell-val">0.00</span>)</button>
+          </div>
+          <p class="subtext">Refines <span id="refinery-rate">80</span> lbs/sec • Payroll: -$<span id="refinery-payroll">0.00</span>/sec • <span id="refinery-next">Next: 10</span></p>
         </div>
 
       </div>
