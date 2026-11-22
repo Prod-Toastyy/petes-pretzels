@@ -278,9 +278,9 @@ function refreshPrestigeMenuUI() {
   const descEl = getEl("prestige-menu-desc");
   if (descEl) {
     if (canClaimPending) {
-      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America while keeping unlocked themes. <strong>Full Wipe</strong> erases everything.`;
+      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America while keeping unlocked themes. <strong>Full Wipe</strong> erases run data while keeping best times &amp; lifetime stats.`;
     } else {
-      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash), unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases everything.`;
+      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash), unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases run data while keeping best times &amp; lifetime stats.`;
     }
   }
 }
@@ -309,7 +309,7 @@ function openActionConfirmation(actionType) {
     setText("confirm-modal-title", "[⚠️] Confirm Full Wipe");
     setText(
       "confirm-modal-body",
-      "Are you sure you want to wipe your entire save? This permanently erases all pretzels, funds, upgrades, continents, Golden Pretzels, and achievements and returns to the title screen."
+      "Wipe your current run, pretzels, funds, upgrades, continents, Golden Pretzels, and achievements back to the title screen? Your Total Time (All Continents), Best Time Ever, Best Run Pretzels, and Pretzels Created (All Runs) will stay saved."
     );
     if (execBtn) {
       execBtn.className = "danger-btn";
@@ -494,9 +494,13 @@ window.startGameFromModal = function() {
 
 function openEndingModal(records = {}) {
   const goldCount = GameState.goldenPretzels || 0;
-  const runSecs = Math.floor(GameState.elapsedRunSeconds || 0);
+  const runSecs = Math.floor(
+    Number.isFinite(records.runSecs) ? records.runSecs : (GameState.elapsedRunSeconds || 0)
+  );
   const bestSecs = Math.floor(GameState.bestRunSeconds || runSecs);
-  const runPretzels = Math.floor(GameState.pretzels || 0);
+  const runPretzels = Math.floor(
+    Number.isFinite(records.runPretzels) ? records.runPretzels : (GameState.pretzels || 0)
+  );
   const bestPretzels = Math.max(Math.floor(GameState.bestRunPretzels || 0), runPretzels);
 
   setText("ending-player-name", GameState.playerName || "Baker");
@@ -1443,6 +1447,7 @@ function sanitizeNumbers() {
   GameState.highestContinentReached = Math.max(GameState.continentIndex, GameState.highestContinentReached);
   if (!Number.isFinite(GameState.goldenPretzels)) GameState.goldenPretzels = 0;
   if (!Number.isFinite(GameState.lifetimePretzelsAllRuns)) GameState.lifetimePretzelsAllRuns = 0;
+  if (!Number.isFinite(GameState.totalPlaySecondsAllRuns)) GameState.totalPlaySecondsAllRuns = 0;
   if (!Number.isFinite(GameState.runStartTime)) GameState.runStartTime = Date.now();
   if (!Number.isFinite(GameState.elapsedRunSeconds)) GameState.elapsedRunSeconds = 0;
   if (!Number.isFinite(GameState.bestRunSeconds)) GameState.bestRunSeconds = 0;
@@ -1526,7 +1531,6 @@ function getEffectivePriceSafe() {
 
 function getRangeShooterIntervalSec() {
   const count = Math.max(1, GameState.rangeShooters || 0);
-  // 1 shooter = 1.60s; scales down smoothly toward 0.35s as you add more shooters
   return Math.max(0.35, 1.60 / (1 + ((count - 1) * 0.22)));
 }
 
@@ -2164,7 +2168,15 @@ function completeContinentExpansion() {
 
   const prevIdx = GameState.continentIndex || 0;
   const isFinalEarthContinent = prevIdx === (typeof CONTINENTS !== "undefined" ? CONTINENTS.length - 1 : 6);
-  const recordsBeforeReset = isFinalEarthContinent ? GameState.finalizeRunRecords() : {};
+  const capturedRunSecs = Math.floor(GameState.elapsedRunSeconds || 0);
+  const capturedRunPretzels = Math.floor(GameState.pretzels || 0);
+  const recordFlags = isFinalEarthContinent ? GameState.finalizeRunRecords() : {};
+  const recordsBeforeReset = {
+    ...recordFlags,
+    runSecs: capturedRunSecs,
+    runPretzels: capturedRunPretzels
+  };
+
   const { earnedGold, conqueringFinalWorld } = GameState.expandToNextContinent();
   const newCont = GameState.getCurrentContinent();
 
@@ -2199,6 +2211,14 @@ function bindControls() {
 
   COLLAPSIBLE_SECTION_IDS.forEach(secId => {
     onClick(`btn-collapse-${secId}`, () => toggleSectionCollapsed(secId));
+  });
+
+  onClick("btn-lb-pretzels", () => {
+    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("pretzels");
+  });
+
+  onClick("btn-lb-time", () => {
+    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("time");
   });
 
   onClick("intro-pretzel-trigger", () => {
@@ -2937,7 +2957,6 @@ function animateMinigames(timestamp) {
           plinkoStepTimer = 0;
           plinkoBall.row += 1;
 
-          // Balanced center bias so [★] and [🌾] aren't pushed away from the middle
           let leftChance = 0.5;
           if (plinkoBall.col < 7) leftChance = 0.42;
           else if (plinkoBall.col > 11) leftChance = 0.58;
@@ -2976,23 +2995,37 @@ async function bootGame() {
     return;
   }
 
-  const offlineSeconds = GameState.load();
-  sanitizeNumbers();
+  bindControls();
+
+  let offlineSeconds = 0;
+  try {
+    offlineSeconds = GameState.load();
+    sanitizeNumbers();
+  } catch (err) {
+    console.error("Save load error:", err);
+  }
 
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
   applyTheme(savedTheme);
   applySavedSectionCollapseStates();
 
-  updateDemand();
-  initSetupPicker();
-  bindControls();
+  try {
+    updateDemand();
+    initSetupPicker();
+  } catch (err) {
+    console.error("Setup picker error:", err);
+  }
 
   if (typeof CloudSave !== "undefined") {
-    CloudSave.init();
-    const sessionUser = await CloudSave.getSessionUser();
-    refreshCloudMenuUI();
-    if (sessionUser) {
-      await applyCloudUserSave(sessionUser);
+    try {
+      CloudSave.init();
+      const sessionUser = await CloudSave.getSessionUser();
+      refreshCloudMenuUI();
+      if (sessionUser) {
+        await applyCloudUserSave(sessionUser);
+      }
+    } catch (err) {
+      console.error("Cloud sync error:", err);
     }
   }
 
@@ -3009,8 +3042,13 @@ async function bootGame() {
     showEl("title-intro-screen");
   }
 
-  render();
-  renderPlinkoBoard(true);
+  try {
+    render();
+    renderPlinkoBoard(true);
+  } catch (err) {
+    console.error("Initial render error:", err);
+  }
+
   requestAnimationFrame(animateMinigames);
 
   let subsecondAccumulator = 0;

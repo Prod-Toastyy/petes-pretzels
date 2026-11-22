@@ -14,7 +14,7 @@
 
   <!-- Title Intro Screen -->
   <div id="title-intro-screen" class="intro-screen">
-    <button type="button" id="intro-pretzel-trigger" class="intro-art-btn" aria-label="click pretzel to start">
+    <button type="button" id="intro-pretzel-trigger" class="intro-art-btn" aria-label="click pretzel to start" onclick="var intro=document.getElementById('title-intro-screen');if(intro)intro.classList.add('hidden');if(typeof initSetupPicker==='function')initSetupPicker();var m=document.getElementById('setup-modal');if(m)m.classList.remove('hidden');">
       <pre class="intro-ascii-art"> ______   ______   _________  ______   ______       ______   ______    ______   _________  ______  ______   __       ______      
 /_____/\ /_____/\ /________/\/_____/\ /_____/\     /_____/\ /_____/\  /_____/\ /________/\/_____/\/_____/\ /_/\     /_____/\     
 \:::_ \ \\::::_\/_\__.::.__\/\::::_\/_\::::_\/_    \:::_ \ \\:::_ \ \ \::::_\/_\__.::.__\/\:::__\/\::::_\/_\:\ \    \::::_\/_    
@@ -34,13 +34,13 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA 8.2 • EARTH CONQUEST EDITION</div>
+    <div class="intro-bottom-version">BETA.9 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
   </div>
 
   <!-- Start Setup -->
   <div id="setup-modal" class="modal-overlay hidden">
     <div class="modal-card">
-      <label for="input-player-name">Name</label>
+      <label for="input-player-name">Shop Name</label>
       <input type="text" id="input-player-name" maxlength="28" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();window.forceStartGame();}">
 
       <div id="ascii-picker-grid" class="ascii-grid"></div>
@@ -149,17 +149,17 @@
       <!-- Run Stats & Best Run Records -->
       <div class="ending-stats-grid" style="margin-bottom: 12px;">
         <div class="stat-tile">
-          <span class="stat-label">Active Run Duration</span>
-          <strong id="hub-run-duration" class="stat-val">0s</strong>
-          <span class="subtext">Best Run Time: <strong id="hub-best-duration">0s</strong></span>
+          <span class="stat-label">Total Time (All Continents)</span>
+          <strong id="hub-total-time-all-continents" class="stat-val">0s</strong>
+          <span class="subtext">Best Time Ever: <strong id="hub-best-time-ever">—</strong></span>
         </div>
         <div class="stat-tile">
-          <span class="stat-label">Run Pretzels Baked</span>
+          <span class="stat-label">Pretzels This Run</span>
           <strong id="hub-run-pretzels" class="stat-val">0</strong>
           <span class="subtext">Best Run Pretzels: <strong id="hub-best-pretzels">0</strong></span>
         </div>
         <div class="stat-tile">
-          <span class="stat-label">Lifetime Pretzels</span>
+          <span class="stat-label">Pretzels Created (All Runs)</span>
           <strong id="hub-lifetime-pretzels" class="stat-val">0</strong>
           <span class="subtext">Solid Gold UI: <strong id="hub-gold-ui-status">Locked</strong></span>
         </div>
@@ -224,6 +224,18 @@
         </div>
       </div>
 
+      <!-- Real-Player Shop Leaderboard -->
+      <div class="leaderboard-panel">
+        <div class="row-header" style="margin-bottom: 8px;">
+          <h3>[🏪] Shop Leaderboard</h3>
+          <div class="btn-row" style="flex: 0 0 auto;">
+            <button type="button" id="btn-lb-pretzels" class="close-small-btn active">Most Pretzels</button>
+            <button type="button" id="btn-lb-time" class="close-small-btn">Lowest Win Time</button>
+          </div>
+        </div>
+        <div id="leaderboard-list" class="leaderboard-list"></div>
+      </div>
+
       <div id="achievements-grid" class="ach-grid"></div>
     </div>
   </div>
@@ -272,7 +284,7 @@
         <span id="prestige-keep-pill" class="tier-badge">Keep 0 [🥨★] (+0%)</span>
       </div>
       <p id="prestige-menu-desc" class="subtext" style="margin-bottom: 12px;">
-        <strong>Prestige</strong> starts a fresh run in North America while keeping Golden Pretzels, unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases everything.
+        <strong>Prestige</strong> starts a fresh run in North America while keeping Golden Pretzels, unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases run data while keeping best times &amp; lifetime stats.
       </p>
       <div class="btn-row">
         <button type="button" id="btn-cancel-restart">Keep Baking</button>

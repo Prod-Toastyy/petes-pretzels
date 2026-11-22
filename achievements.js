@@ -123,7 +123,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[🏭]",
     title: "Continental Producer",
     desc: "Bake 10,000,000 lifetime pretzels across all territories.",
-    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 10000000
+    check: (s) => (typeof s.getTotalLifetimePretzelsAllRuns === "function" ? s.getTotalLifetimePretzelsAllRuns() : ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0))) >= 10000000
   },
   {
     id: "first_conquest",
@@ -144,7 +144,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[🚀]",
     title: "Hundred-Million Twist",
     desc: "Bake 100,000,000 lifetime pretzels across all territories.",
-    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 100000000
+    check: (s) => (typeof s.getTotalLifetimePretzelsAllRuns === "function" ? s.getTotalLifetimePretzelsAllRuns() : ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0))) >= 100000000
   },
   {
     id: "hundred_million_cash",
@@ -172,7 +172,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[☄️]",
     title: "One Billion Knots",
     desc: "Bake 1,000,000,000 lifetime pretzels across all territories.",
-    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 1000000000
+    check: (s) => (typeof s.getTotalLifetimePretzelsAllRuns === "function" ? s.getTotalLifetimePretzelsAllRuns() : ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0))) >= 1000000000
   },
   {
     id: "world_conqueror",
@@ -193,7 +193,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[🪐]",
     title: "Galactic Dough Singularity",
     desc: "Bake 10,000,000,000 lifetime pretzels across all territories.",
-    check: (s) => ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0)) >= 10000000000
+    check: (s) => (typeof s.getTotalLifetimePretzelsAllRuns === "function" ? s.getTotalLifetimePretzelsAllRuns() : ((s.lifetimePretzelsAllRuns || 0) + (s.pretzels || 0))) >= 10000000000
   }
 ];
 
@@ -212,6 +212,9 @@ const GLOBE_MAP = [
 ];
 
 let globeSpinOffset = 0;
+let activeLeaderboardMode = "pretzels";
+let liveLeaderboardRows = [];
+let leaderboardFetching = false;
 
 function renderSpinningGlobe() {
   const globeEl = document.getElementById("ascii-globe");
@@ -278,6 +281,133 @@ function renderContinentStatusChips() {
     chip.className = `cont-chip ${cls}`;
     chip.textContent = `${prefix} ${c.name}`;
     wrap.appendChild(chip);
+  });
+}
+
+async function syncAndFetchLeaderboard() {
+  if (leaderboardFetching || typeof GameState === "undefined" || !GameState.started) return;
+  leaderboardFetching = true;
+
+  try {
+    const client = (typeof CloudSave !== "undefined" && CloudSave.client)
+      ? CloudSave.client
+      : (typeof supabaseClient !== "undefined" ? supabaseClient : null);
+
+    const shopName = (GameState.playerName || "").trim() || "Unnamed Pretzel Shop";
+    const pretzelsAllRuns = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
+      ? Math.floor(GameState.getTotalLifetimePretzelsAllRuns())
+      : Math.floor((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
+    const bestWinSeconds = (GameState.bestRunSeconds || 0) > 0
+      ? Math.floor(GameState.bestRunSeconds)
+      : null;
+
+    if (client) {
+      const currentUser = (typeof CloudSave !== "undefined" && CloudSave.user)
+        ? CloudSave.user
+        : (await client.auth.getUser())?.data?.user;
+
+      if (currentUser) {
+        await client
+          .from("shop_leaderboard")
+          .upsert({
+            user_id: currentUser.id,
+            shop_name: shopName,
+            pretzels_all_runs: pretzelsAllRuns,
+            best_win_seconds: bestWinSeconds,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" });
+      }
+
+      let query = client
+        .from("shop_leaderboard")
+        .select("user_id, shop_name, pretzels_all_runs, best_win_seconds")
+        .limit(25);
+
+      if (activeLeaderboardMode === "time") {
+        query = query
+          .not("best_win_seconds", "is", null)
+          .gt("best_win_seconds", 0)
+          .order("best_win_seconds", { ascending: true });
+      } else {
+        query = query.order("pretzels_all_runs", { ascending: false });
+      }
+
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        liveLeaderboardRows = data.map(row => ({
+          shopName: row.shop_name || "Unnamed Pretzel Shop",
+          pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
+          bestWinSeconds: row.best_win_seconds ? Number(row.best_win_seconds) : null,
+          isUser: Boolean(currentUser && row.user_id === currentUser.id)
+        }));
+      }
+    }
+  } catch (err) {
+    console.error("Leaderboard sync/fetch error:", err);
+  } finally {
+    leaderboardFetching = false;
+    renderLeaderboard();
+  }
+}
+
+function renderLeaderboard() {
+  const listEl = document.getElementById("leaderboard-list");
+  if (!listEl || typeof GameState === "undefined") return;
+
+  const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
+  const userShopName = (GameState.playerName || "").trim() || "Your Pretzel Shop";
+  const userLifetime = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
+    ? GameState.getTotalLifetimePretzelsAllRuns()
+    : ((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
+  const userBestSecs = Math.floor(GameState.bestRunSeconds || 0);
+
+  let entries = liveLeaderboardRows.length > 0
+    ? [...liveLeaderboardRows]
+    : [{
+        shopName: userShopName,
+        pretzelsAllRuns: userLifetime,
+        bestWinSeconds: userBestSecs > 0 ? userBestSecs : null,
+        isUser: true
+      }];
+
+  if (!entries.some(e => e.isUser)) {
+    entries.push({
+      shopName: userShopName,
+      pretzelsAllRuns: userLifetime,
+      bestWinSeconds: userBestSecs > 0 ? userBestSecs : null,
+      isUser: true
+    });
+  }
+
+  if (activeLeaderboardMode === "time") {
+    entries = entries.filter(e => e.bestWinSeconds !== null && e.bestWinSeconds > 0);
+    entries.sort((a, b) => a.bestWinSeconds - b.bestWinSeconds);
+  } else {
+    entries.sort((a, b) => b.pretzelsAllRuns - a.pretzelsAllRuns);
+  }
+
+  listEl.innerHTML = "";
+  if (entries.length === 0) {
+    const emptyRow = document.createElement("div");
+    emptyRow.className = "leaderboard-row";
+    emptyRow.innerHTML = `<span>No completed win times posted yet.</span><strong>—</strong>`;
+    listEl.appendChild(emptyRow);
+    return;
+  }
+
+  entries.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "leaderboard-row" + (entry.isUser ? " is-player" : "");
+
+    const statDisplay = activeLeaderboardMode === "time"
+      ? fmtSecs(entry.bestWinSeconds)
+      : `${Math.floor(entry.pretzelsAllRuns).toLocaleString()} pretzels`;
+
+    row.innerHTML = `
+      <span><strong>#${index + 1}</strong> ${entry.shopName}${entry.isUser ? " (You)" : ""}</span>
+      <strong>${statDisplay}</strong>
+    `;
+    listEl.appendChild(row);
   });
 }
 
@@ -452,22 +582,24 @@ const AchievementManager = {
       }
     }
 
-    const runSecs = Math.floor(GameState.elapsedRunSeconds || 0);
-    const bestSecs = Math.floor(GameState.bestRunSeconds || 0);
+    const totalAllContinentsSecs = Math.floor(GameState.totalPlaySecondsAllRuns || 0);
+    const bestEverSecs = Math.floor(GameState.bestRunSeconds || 0);
     const runPretzels = Math.floor(GameState.pretzels || 0);
     const bestPretzels = Math.max(Math.floor(GameState.bestRunPretzels || 0), runPretzels);
-    const lifetimeTotal = (GameState.lifetimePretzelsAllRuns || 0) + runPretzels;
+    const lifetimeTotal = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
+      ? GameState.getTotalLifetimePretzelsAllRuns()
+      : ((GameState.lifetimePretzelsAllRuns || 0) + runPretzels);
 
-    const hubDurEl = document.getElementById("hub-run-duration");
-    const hubBestDurEl = document.getElementById("hub-best-duration");
+    const hubTotalTimeEl = document.getElementById("hub-total-time-all-continents");
+    const hubBestTimeEl = document.getElementById("hub-best-time-ever");
     const hubRunPretzEl = document.getElementById("hub-run-pretzels");
     const hubBestPretzEl = document.getElementById("hub-best-pretzels");
     const hubLifePretzEl = document.getElementById("hub-lifetime-pretzels");
     const hubGoldUiEl = document.getElementById("hub-gold-ui-status");
 
     const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
-    if (hubDurEl) hubDurEl.textContent = fmtSecs(runSecs);
-    if (hubBestDurEl) hubBestDurEl.textContent = bestSecs > 0 ? fmtSecs(bestSecs) : "—";
+    if (hubTotalTimeEl) hubTotalTimeEl.textContent = fmtSecs(totalAllContinentsSecs);
+    if (hubBestTimeEl) hubBestTimeEl.textContent = bestEverSecs > 0 ? fmtSecs(bestEverSecs) : "—";
     if (hubRunPretzEl) hubRunPretzEl.textContent = runPretzels.toLocaleString();
     if (hubBestPretzEl) hubBestPretzEl.textContent = bestPretzels.toLocaleString();
     if (hubLifePretzEl) hubLifePretzEl.textContent = lifetimeTotal.toLocaleString();
@@ -488,6 +620,16 @@ const AchievementManager = {
     if (totalModal) totalModal.textContent = ACHIEVEMENTS_LIST.length;
   },
 
+  setLeaderboardMode(mode) {
+    activeLeaderboardMode = mode === "time" ? "time" : "pretzels";
+    const pretzelsBtn = document.getElementById("btn-lb-pretzels");
+    const timeBtn = document.getElementById("btn-lb-time");
+    if (pretzelsBtn) pretzelsBtn.classList.toggle("active", activeLeaderboardMode === "pretzels");
+    if (timeBtn) timeBtn.classList.toggle("active", activeLeaderboardMode === "time");
+    renderLeaderboard();
+    syncAndFetchLeaderboard();
+  },
+
   renderModal() {
     const listEl = document.getElementById("achievements-grid");
     if (!listEl) return;
@@ -496,6 +638,8 @@ const AchievementManager = {
     this.updateButtonCount();
     renderContinentStatusChips();
     renderSpinningGlobe();
+    renderLeaderboard();
+    syncAndFetchLeaderboard();
     listEl.innerHTML = "";
 
     ACHIEVEMENTS_LIST.forEach(ach => {

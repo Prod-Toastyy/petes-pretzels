@@ -1,4 +1,5 @@
 const SAVE_KEY = "petes_pretzels_save_v4";
+const HIGH_SCORES_KEY = "petes_pretzels_high_scores_v1";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
 
 const CONTINENTS = [
@@ -74,6 +75,13 @@ const RECIPES = {
   }
 };
 
+const DEFAULT_HIGH_SCORES = {
+  totalPlaySecondsAllRuns: 0,
+  bestRunSeconds: 0,
+  bestRunPretzels: 0,
+  lifetimePretzelsBanked: 0
+};
+
 const DEFAULT_STATE = {
   started: false,
   playerName: "",
@@ -83,6 +91,7 @@ const DEFAULT_STATE = {
   // Run & Best Records
   runStartTime: 0,
   elapsedRunSeconds: 0,
+  totalPlaySecondsAllRuns: 0,
   bestRunSeconds: 0,
   bestRunPretzels: 0,
   goldUiUnlocked: false,
@@ -165,6 +174,65 @@ const DEFAULT_STATE = {
 const GameState = {
   ...JSON.parse(JSON.stringify(DEFAULT_STATE)),
 
+  readHighScores() {
+    try {
+      const raw = localStorage.getItem(HIGH_SCORES_KEY);
+      if (!raw) return { ...DEFAULT_HIGH_SCORES };
+      const parsed = JSON.parse(raw);
+      return {
+        totalPlaySecondsAllRuns: Math.max(0, Math.floor(Number(parsed.totalPlaySecondsAllRuns) || 0)),
+        bestRunSeconds: Math.max(0, Math.floor(Number(parsed.bestRunSeconds) || 0)),
+        bestRunPretzels: Math.max(0, Math.floor(Number(parsed.bestRunPretzels) || 0)),
+        lifetimePretzelsBanked: Math.max(0, Math.floor(Number(parsed.lifetimePretzelsBanked) || 0))
+      };
+    } catch (e) {
+      return { ...DEFAULT_HIGH_SCORES };
+    }
+  },
+
+  writeHighScores(scores) {
+    try {
+      localStorage.setItem(HIGH_SCORES_KEY, JSON.stringify({
+        totalPlaySecondsAllRuns: Math.max(0, Math.floor(Number(scores.totalPlaySecondsAllRuns) || 0)),
+        bestRunSeconds: Math.max(0, Math.floor(Number(scores.bestRunSeconds) || 0)),
+        bestRunPretzels: Math.max(0, Math.floor(Number(scores.bestRunPretzels) || 0)),
+        lifetimePretzelsBanked: Math.max(0, Math.floor(Number(scores.lifetimePretzelsBanked) || 0))
+      }));
+    } catch (e) {
+      console.error("Failed to save high scores:", e);
+    }
+  },
+
+  syncPersistentHighScores() {
+    const hs = this.readHighScores();
+    const runPretzels = Math.floor(this.pretzels || 0);
+    const totalSecs = Math.max(this.totalPlaySecondsAllRuns || 0, hs.totalPlaySecondsAllRuns || 0);
+    const bestSecs = (this.bestRunSeconds || 0) > 0 && (hs.bestRunSeconds || 0) > 0
+      ? Math.min(this.bestRunSeconds, hs.bestRunSeconds)
+      : Math.max(this.bestRunSeconds || 0, hs.bestRunSeconds || 0);
+    const bestPretzels = Math.max(this.bestRunPretzels || 0, hs.bestRunPretzels || 0, runPretzels);
+    const bankedLifetime = Math.max(this.lifetimePretzelsAllRuns || 0, hs.lifetimePretzelsBanked || 0);
+
+    this.totalPlaySecondsAllRuns = totalSecs;
+    this.bestRunSeconds = bestSecs;
+    this.bestRunPretzels = bestPretzels;
+    this.lifetimePretzelsAllRuns = bankedLifetime;
+
+    this.writeHighScores({
+      totalPlaySecondsAllRuns: totalSecs,
+      bestRunSeconds: bestSecs,
+      bestRunPretzels: bestPretzels,
+      lifetimePretzelsBanked: bankedLifetime
+    });
+  },
+
+  getTotalLifetimePretzelsAllRuns() {
+    const hs = this.readHighScores();
+    const banked = Math.max(this.lifetimePretzelsAllRuns || 0, hs.lifetimePretzelsBanked || 0);
+    const currentRun = Math.floor(this.pretzels || 0);
+    return banked + currentRun;
+  },
+
   syncHighestContinent() {
     const currentIdx = Math.max(0, this.continentIndex || 0);
     const prevHighest = Math.max(0, this.highestContinentReached || 0);
@@ -233,11 +301,13 @@ const GameState = {
     this.syncHighestContinent();
     if (addSeconds > 0) {
       this.elapsedRunSeconds = (this.elapsedRunSeconds || 0) + addSeconds;
+      this.totalPlaySecondsAllRuns = (this.totalPlaySecondsAllRuns || 0) + addSeconds;
     }
     const runPretzels = Math.floor(this.pretzels || 0);
     if (runPretzels > (this.bestRunPretzels || 0)) {
       this.bestRunPretzels = runPretzels;
     }
+    this.syncPersistentHighScores();
   },
 
   finalizeRunRecords() {
@@ -256,7 +326,8 @@ const GameState = {
       isNewBestPretzels = true;
     }
 
-    return { isNewBestTime, isNewBestPretzels };
+    this.syncPersistentHighScores();
+    return { isNewBestTime, isNewBestPretzels, runSecs: currentSecs, runPretzels };
   },
 
   expandToNextContinent() {
@@ -268,6 +339,7 @@ const GameState = {
     const preservedAscii = this.selectedAsciiIndex;
     const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
+    const totalPlaySecs = this.totalPlaySecondsAllRuns || 0;
     const nextContinentIdx = prevContinentIdx + 1;
     const nextHighestContinent = Math.max(this.highestContinentReached || 0, prevContinentIdx, nextContinentIdx);
     const totalGold = (this.goldenPretzels || 0) + earnedGold;
@@ -288,6 +360,7 @@ const GameState = {
     this.selectedAsciiIndex = preservedAscii;
     this.unlockedAchievements = preservedAchievements;
     this.lifetimePretzelsAllRuns = totalLifetime;
+    this.totalPlaySecondsAllRuns = totalPlaySecs;
     this.continentIndex = nextContinentIdx;
     this.highestContinentReached = nextHighestContinent;
     this.goldenPretzels = totalGold;
@@ -308,6 +381,7 @@ const GameState = {
     this.refineryCost = Math.round(8500.00 * scale * 100) / 100;
     this.rangeShooterCost = Math.round(2500.00 * scale * 100) / 100;
 
+    this.syncPersistentHighScores();
     this.save(true);
     return { earnedGold, conqueringFinalWorld };
   },
@@ -319,6 +393,7 @@ const GameState = {
     const preservedAscii = this.selectedAsciiIndex;
     const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
+    const totalPlaySecs = this.totalPlaySecondsAllRuns || 0;
     const totalGold = (this.goldenPretzels || 0) + bonusGold;
     const unlockedGoldUi = Boolean(this.goldUiUnlocked);
     const preservedHighestContinent = Math.max(this.highestContinentReached || 0, this.continentIndex || 0);
@@ -332,6 +407,7 @@ const GameState = {
     this.selectedAsciiIndex = preservedAscii;
     this.unlockedAchievements = preservedAchievements;
     this.lifetimePretzelsAllRuns = totalLifetime;
+    this.totalPlaySecondsAllRuns = totalPlaySecs;
     this.continentIndex = 0;
     this.highestContinentReached = preservedHighestContinent;
     this.goldenPretzels = totalGold;
@@ -341,12 +417,14 @@ const GameState = {
     this.runStartTime = Date.now();
     this.elapsedRunSeconds = 0;
 
+    this.syncPersistentHighScores();
     this.save(true);
     return { totalGold, bonusGold };
   },
 
   getSnapshot() {
     this.syncHighestContinent();
+    this.syncPersistentHighScores();
     this.lastTick = Date.now();
     const snapshot = {};
     for (const key of Object.keys(DEFAULT_STATE)) {
@@ -364,6 +442,7 @@ const GameState = {
     }
 
     this.syncHighestContinent();
+    this.syncPersistentHighScores();
     if (!this.runStartTime) this.runStartTime = Date.now();
 
     const batchSize = this.doughBatchSize || 500;
@@ -411,6 +490,12 @@ const GameState = {
   },
 
   load() {
+    const hs = this.readHighScores();
+    this.totalPlaySecondsAllRuns = hs.totalPlaySecondsAllRuns;
+    this.bestRunSeconds = hs.bestRunSeconds;
+    this.bestRunPretzels = hs.bestRunPretzels;
+    this.lifetimePretzelsAllRuns = hs.lifetimePretzelsBanked;
+
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return 0;
 
@@ -423,8 +508,18 @@ const GameState = {
   },
 
   reset(syncCloud = false) {
+    this.syncPersistentHighScores();
+    const preservedScores = this.readHighScores();
+
     localStorage.removeItem(SAVE_KEY);
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+
+    this.totalPlaySecondsAllRuns = preservedScores.totalPlaySecondsAllRuns;
+    this.bestRunSeconds = preservedScores.bestRunSeconds;
+    this.bestRunPretzels = preservedScores.bestRunPretzels;
+    this.lifetimePretzelsAllRuns = preservedScores.lifetimePretzelsBanked;
+    this.writeHighScores(preservedScores);
+
     if (syncCloud && typeof CloudSave !== "undefined" && CloudSave.user) {
       CloudSave.pushToCloud(this.getSnapshot());
     }
