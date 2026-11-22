@@ -44,6 +44,15 @@ const CloudSave = {
     }
   },
 
+  clearSessionState() {
+    this.user = null;
+    this.session = null;
+    this.writeStoredSession(null);
+    if (typeof refreshCloudMenuUI === "function") {
+      refreshCloudMenuUI();
+    }
+  },
+
   init() {
     if (!this.hasValidCredentials()) {
       this.isConfigured = false;
@@ -66,7 +75,6 @@ const CloudSave = {
       return true;
     }
 
-    // Fallback mode: allow auth & REST calls even when window.supabase isn't loaded
     this.isConfigured = true;
     this.setStatus(this.user ? "Cloud: Synced" : "Cloud: Ready", "online");
     return true;
@@ -83,6 +91,78 @@ const CloudSave = {
     el.textContent = text;
     el.classList.remove("cloud-online", "cloud-offline", "cloud-syncing");
     if (stateClass) el.classList.add(`cloud-${stateClass}`);
+  },
+
+  async refreshActiveSession() {
+    if (!this.ensureReady()) return null;
+
+    if (this.client && this.client.auth) {
+      try {
+        const { data: sessionData } = await this.client.auth.getSession();
+        const activeSess = sessionData?.session || null;
+        const nowSec = Math.floor(Date.now() / 1000);
+
+        if (activeSess && (!activeSess.expires_at || activeSess.expires_at - nowSec > 45)) {
+          this.session = activeSess;
+          this.user = activeSess.user || null;
+          if (this.session && this.user) {
+            this.writeStoredSession({
+              access_token: this.session.access_token,
+              refresh_token: this.session.refresh_token || "",
+              user: this.user
+            });
+          }
+          return this.session;
+        }
+
+        const { data: refreshed, error: refreshErr } = await this.client.auth.refreshSession();
+        if (!refreshErr && refreshed?.session) {
+          this.session = refreshed.session;
+          this.user = refreshed.session.user || null;
+          this.writeStoredSession({
+            access_token: this.session.access_token,
+            refresh_token: this.session.refresh_token || "",
+            user: this.user
+          });
+          return this.session;
+        }
+      } catch (e) {
+        console.warn("SDK session refresh check:", e);
+      }
+    }
+
+    const stored = this.readStoredSession();
+    if (stored && stored.refresh_token) {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ refresh_token: stored.refresh_token })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.access_token && data.user) {
+            const nextSession = {
+              access_token: data.access_token,
+              refresh_token: data.refresh_token || stored.refresh_token,
+              user: data.user
+            };
+            this.session = nextSession;
+            this.user = data.user;
+            this.writeStoredSession(nextSession);
+            return nextSession;
+          }
+        }
+      } catch (e) {
+        console.warn("REST refresh token check:", e);
+      }
+    }
+
+    return null;
   },
 
   async authRestRequest(path, payload) {
@@ -124,6 +204,12 @@ const CloudSave = {
   async getSessionUser() {
     if (!this.ensureReady()) return null;
 
+    const refreshed = await this.refreshActiveSession();
+    if (refreshed && refreshed.user) {
+      this.user = refreshed.user;
+      return this.user;
+    }
+
     if (this.client) {
       const { data, error } = await this.client.auth.getUser();
       if (!error && data?.user) {
@@ -132,14 +218,7 @@ const CloudSave = {
       }
     }
 
-    const stored = this.readStoredSession();
-    if (stored && stored.user) {
-      this.session = stored;
-      this.user = stored.user;
-      return this.user;
-    }
-
-    this.user = null;
+    this.clearSessionState();
     return null;
   },
 
@@ -216,28 +295,27 @@ const CloudSave = {
     if (!this.ensureReady() || !this.user) return null;
     this.setStatus("Cloud: Loading...", "syncing");
 
-    if (this.client) {
-      const { data, error } = await this.client
-        .from("player_saves")
-        .select("save_data, updated_at")
-        .eq("user_id", this.user.id)
-        .maybeSingle();
-
-      if (!error) {
-        this.setStatus("Cloud: Synced", "online");
-        return data ? data.save_data : null;
-      }
+    const activeSession = await this.refreshActiveSession();
+    if (!activeSession || !activeSession.user) {
+      this.clearSessionState();
+      this.setStatus("Cloud: Signed Out", "offline");
+      return null;
     }
 
     try {
-      const token = this.getBearerToken();
-      const url = `${SUPABASE_URL}/rest/v1/player_saves?user_id=eq.${encodeURIComponent(this.user.id)}&select=save_data,updated_at&limit=1`;
+      const token = activeSession.access_token || this.getBearerToken();
+      const url = `${SUPABASE_URL}/rest/v1/player_saves?user_id=eq.${encodeURIComponent(activeSession.user.id)}&select=save_data,updated_at&limit=1`;
       const res = await fetch(url, {
         headers: {
           "apikey": SUPABASE_ANON_KEY,
           "Authorization": `Bearer ${token}`
         }
       });
+      if (res.status === 401) {
+        this.clearSessionState();
+        this.setStatus("Cloud: Signed Out", "offline");
+        return null;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows = await res.json();
       this.setStatus("Cloud: Synced", "online");
@@ -255,26 +333,22 @@ const CloudSave = {
     this.setStatus("Cloud: Saving...", "syncing");
 
     try {
+      let activeSession = await this.refreshActiveSession();
+      if (!activeSession || !activeSession.user) {
+        this.clearSessionState();
+        this.setStatus("Cloud: Signed Out", "offline");
+        return;
+      }
+
       const rowPayload = {
-        user_id: this.user.id,
+        user_id: activeSession.user.id,
         player_name: snapshotObj.playerName || "Baker",
         save_data: snapshotObj,
         updated_at: new Date().toISOString()
       };
 
-      if (this.client) {
-        const { error } = await this.client
-          .from("player_saves")
-          .upsert(rowPayload, { onConflict: "user_id" });
-
-        if (!error) {
-          this.setStatus("Cloud: Synced", "online");
-          return;
-        }
-      }
-
-      const token = this.getBearerToken();
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/player_saves?on_conflict=user_id`, {
+      let token = activeSession.access_token || this.getBearerToken();
+      let res = await fetch(`${SUPABASE_URL}/rest/v1/player_saves?on_conflict=user_id`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -284,6 +358,29 @@ const CloudSave = {
         },
         body: JSON.stringify(rowPayload)
       });
+
+      if (res.status === 401) {
+        activeSession = await this.refreshActiveSession();
+        if (activeSession && activeSession.access_token) {
+          token = activeSession.access_token;
+          res = await fetch(`${SUPABASE_URL}/rest/v1/player_saves?on_conflict=user_id`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${token}`,
+              "Prefer": "resolution=merge-duplicates,return=minimal"
+            },
+            body: JSON.stringify({ ...rowPayload, user_id: activeSession.user.id })
+          });
+        }
+      }
+
+      if (res.status === 401) {
+        this.clearSessionState();
+        this.setStatus("Cloud: Signed Out", "offline");
+        return;
+      }
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);

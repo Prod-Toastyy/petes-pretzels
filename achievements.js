@@ -217,21 +217,15 @@ let globeSpinOffset = 0;
 let activeLeaderboardMode = "pretzels";
 let liveLeaderboardRows = [];
 let leaderboardFetching = false;
-let cachedLeaderboardClient = null;
+let cachedAnonLeaderboardClient = null;
 
 function getLeaderboardClient() {
-  if (cachedLeaderboardClient) return cachedLeaderboardClient;
-  if (typeof CloudSave !== "undefined" && CloudSave.client) {
-    cachedLeaderboardClient = CloudSave.client;
-    return cachedLeaderboardClient;
-  }
-  if (typeof supabaseClient !== "undefined" && supabaseClient) {
-    cachedLeaderboardClient = supabaseClient;
-    return cachedLeaderboardClient;
-  }
+  if (cachedAnonLeaderboardClient) return cachedAnonLeaderboardClient;
   if (typeof SUPABASE_URL !== "undefined" && typeof SUPABASE_ANON_KEY !== "undefined" && window.supabase?.createClient) {
-    cachedLeaderboardClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    return cachedLeaderboardClient;
+    cachedAnonLeaderboardClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    return cachedAnonLeaderboardClient;
   }
   return null;
 }

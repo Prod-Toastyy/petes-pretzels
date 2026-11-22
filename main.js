@@ -3160,7 +3160,12 @@ async function bootGame() {
   }, 100);
 
   setInterval(() => {
-    if (GameState.started) GameState.save(true);
+    if (GameState.started) {
+      GameState.save(true);
+      if (typeof syncAndFetchLeaderboard === "function") {
+        syncAndFetchLeaderboard();
+      }
+    }
   }, 15000);
 
   window.addEventListener("beforeunload", () => {
