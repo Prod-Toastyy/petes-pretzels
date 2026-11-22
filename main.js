@@ -167,6 +167,104 @@ function refreshCloudMenuUI() {
   }
 }
 
+let pendingConfirmAction = null;
+
+function refreshPrestigeMenuUI() {
+  if (typeof GameState === "undefined") return;
+  const currentGold = GameState.goldenPretzels || 0;
+  const canClaimPending = typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent();
+  const pendingGold = canClaimPending ? GameState.calculatePendingGoldenPretzels() : 0;
+  const totalAfter = currentGold + pendingGold;
+
+  setText("prestige-keep-pill", `Keep ${totalAfter.toLocaleString()} [🥨★] (+${totalAfter * 25}%)`);
+
+  const descEl = getEl("prestige-menu-desc");
+  if (descEl) {
+    if (canClaimPending) {
+      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America. <strong>Full Wipe</strong> erases everything.`;
+    } else {
+      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash) &amp; achievements. <strong>Full Wipe</strong> erases everything.`;
+    }
+  }
+}
+
+function openActionConfirmation(actionType) {
+  pendingConfirmAction = actionType;
+  const execBtn = getEl("btn-execute-confirm-modal");
+
+  if (actionType === "prestige") {
+    const currentGold = GameState.goldenPretzels || 0;
+    const canClaimPending = typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent();
+    const pendingGold = canClaimPending ? GameState.calculatePendingGoldenPretzels() : 0;
+    const totalAfter = currentGold + pendingGold;
+
+    setText("confirm-modal-title", "[🥨★] Confirm Prestige Run");
+    setText(
+      "confirm-modal-body",
+      `Start a fresh run in North America? Your current pretzels, cash, upgrades, and territory progress will reset, while you keep ${totalAfter.toLocaleString()} Golden Pretzels (+${totalAfter * 25}% cash bonus), all unlocked achievements, and your best run records.`
+    );
+    if (execBtn) {
+      execBtn.className = "expand-btn";
+      execBtn.style.marginTop = "0";
+      execBtn.textContent = `Confirm Prestige (Keep ${totalAfter.toLocaleString()} [🥨★])`;
+    }
+  } else {
+    setText("confirm-modal-title", "[⚠️] Confirm Full Wipe");
+    setText(
+      "confirm-modal-body",
+      "Are you sure you want to wipe your entire save? This permanently erases all pretzels, funds, upgrades, continents, Golden Pretzels, and achievements and returns to the title screen."
+    );
+    if (execBtn) {
+      execBtn.className = "danger-btn";
+      execBtn.style.marginTop = "0";
+      execBtn.textContent = "Confirm Full Wipe";
+    }
+  }
+
+  hideEl("restart-modal");
+  showEl("confirm-action-modal");
+}
+
+function executePrestigeRun() {
+  if (typeof GameState === "undefined" || typeof GameState.prestigeRestartRun !== "function") return;
+  const canClaimPending = typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent();
+  const { totalGold, bonusGold } = GameState.prestigeRestartRun(canClaimPending);
+
+  resetRegionalPanelsUI();
+  updateDemand();
+  applySessionUI();
+  hideEl("confirm-action-modal");
+  hideEl("restart-modal");
+
+  const bonusNote = bonusGold > 0 ? ` (+${bonusGold} newly claimed)` : "";
+  logMessage(`PRESTIGE RUN STARTED! Fresh start in North America with ${totalGold.toLocaleString()} Golden Pretzels${bonusNote} (+${totalGold * 25}% cash)!`);
+  render();
+}
+
+function executeFullWipe() {
+  if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
+    GameState.reset(true);
+  }
+  applyTheme("espresso");
+  resetRegionalPanelsUI();
+  hideEl("confirm-action-modal");
+  hideEl("restart-modal");
+  hideEl("setup-modal");
+  hideEl("ending-modal");
+
+  const nameInput = getEl("input-player-name");
+  if (nameInput) nameInput.value = "";
+
+  if (typeof AchievementManager !== "undefined") {
+    AchievementManager.queue = [];
+    AchievementManager.updateButtonCount();
+  }
+
+  initSetupPicker();
+  showEl("title-intro-screen");
+  render();
+}
+
 async function applyCloudUserSave(user) {
   refreshCloudMenuUI();
   if (typeof CloudSave === "undefined" || !user) return;
@@ -1547,8 +1645,38 @@ function bindControls() {
   onClick("player-badge", () => {
     refreshThemeDropdown();
     refreshCloudMenuUI();
+    refreshPrestigeMenuUI();
     setText("cloud-menu-msg", "");
     showEl("restart-modal");
+  });
+
+  onClick("btn-open-prestige-confirm", () => {
+    openActionConfirmation("prestige");
+  });
+
+  onClick("btn-open-wipe-confirm", () => {
+    openActionConfirmation("wipe");
+  });
+
+  onClick("btn-close-confirm-modal", () => {
+    pendingConfirmAction = null;
+    hideEl("confirm-action-modal");
+  });
+
+  onClick("btn-cancel-confirm-modal", () => {
+    pendingConfirmAction = null;
+    hideEl("confirm-action-modal");
+    showEl("restart-modal");
+  });
+
+  onClick("btn-execute-confirm-modal", () => {
+    const action = pendingConfirmAction;
+    pendingConfirmAction = null;
+    if (action === "prestige") {
+      executePrestigeRun();
+    } else if (action === "wipe") {
+      executeFullWipe();
+    }
   });
 
   onClick("btn-close-restart", () => {
@@ -1565,29 +1693,6 @@ function bindControls() {
       applyTheme(e.target.value);
     });
   }
-
-  onClick("btn-confirm-restart", () => {
-    if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
-      GameState.reset(true);
-    }
-    applyTheme("espresso");
-    resetRegionalPanelsUI();
-    hideEl("restart-modal");
-    hideEl("setup-modal");
-    hideEl("ending-modal");
-
-    const nameInput = getEl("input-player-name");
-    if (nameInput) nameInput.value = "";
-
-    if (typeof AchievementManager !== "undefined") {
-      AchievementManager.queue = [];
-      AchievementManager.updateButtonCount();
-    }
-
-    initSetupPicker();
-    showEl("title-intro-screen");
-    render();
-  });
 
   onClick("btn-buy-promo", () => {
     if (GameState.funds >= GameState.promoCost) {

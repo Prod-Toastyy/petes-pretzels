@@ -258,6 +258,37 @@ const GameState = {
     return { earnedGold, conqueringFinalWorld };
   },
 
+  prestigeRestartRun(claimPendingGold = false) {
+    const bonusGold = claimPendingGold ? this.calculatePendingGoldenPretzels() : 0;
+
+    const preservedName = this.playerName;
+    const preservedAscii = this.selectedAsciiIndex;
+    const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
+    const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
+    const totalGold = (this.goldenPretzels || 0) + bonusGold;
+    const unlockedGoldUi = Boolean(this.goldUiUnlocked);
+    const nextBestSecs = this.bestRunSeconds || 0;
+    const nextBestPretzels = Math.max(this.bestRunPretzels || 0, Math.floor(this.pretzels || 0));
+
+    Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+
+    this.started = true;
+    this.playerName = preservedName;
+    this.selectedAsciiIndex = preservedAscii;
+    this.unlockedAchievements = preservedAchievements;
+    this.lifetimePretzelsAllRuns = totalLifetime;
+    this.continentIndex = 0;
+    this.goldenPretzels = totalGold;
+    this.goldUiUnlocked = unlockedGoldUi;
+    this.bestRunSeconds = nextBestSecs;
+    this.bestRunPretzels = nextBestPretzels;
+    this.runStartTime = Date.now();
+    this.elapsedRunSeconds = 0;
+
+    this.save(true);
+    return { totalGold, bonusGold };
+  },
+
   getSnapshot() {
     this.lastTick = Date.now();
     const snapshot = {};

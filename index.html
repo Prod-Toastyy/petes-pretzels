@@ -34,7 +34,7 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA.4 • EARTH CONQUEST EDITION</div>
+    <div class="intro-bottom-version">BETA.5 • EARTH CONQUEST EDITION</div>
   </div>
 
   <!-- Start Setup -->
@@ -267,12 +267,32 @@
         <select id="select-theme" class="theme-select"></select>
       </div>
 
-      <p class="subtext" style="margin-bottom: 14px;">
-        Restarting will erase your current pretzels, funds, upgrades, continents, and achievements and return to the title screen.
+      <div class="module-head" style="margin-bottom: 4px;">
+        <span class="subtext">Run &amp; Save Actions</span>
+        <span id="prestige-keep-pill" class="tier-badge">Keep 0 [🥨★] (+0%)</span>
+      </div>
+      <p id="prestige-menu-desc" class="subtext" style="margin-bottom: 12px;">
+        <strong>Prestige</strong> starts a fresh run in North America while keeping Golden Pretzels &amp; achievements. <strong>Full Wipe</strong> erases everything.
       </p>
       <div class="btn-row">
         <button type="button" id="btn-cancel-restart">Keep Baking</button>
-        <button type="button" id="btn-confirm-restart" class="danger-btn">Restart Game</button>
+        <button type="button" id="btn-open-prestige-confirm" class="expand-btn" style="margin-top: 0;">Prestige</button>
+        <button type="button" id="btn-open-wipe-confirm" class="danger-btn">Full Wipe</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedicated Confirmation Modal for Prestige or Full Wipe -->
+  <div id="confirm-action-modal" class="modal-overlay hidden">
+    <div class="modal-card small-modal">
+      <div class="row-header">
+        <h2 id="confirm-modal-title">Confirm Action</h2>
+        <button type="button" id="btn-close-confirm-modal" class="close-small-btn">Close</button>
+      </div>
+      <p id="confirm-modal-body" class="subtext" style="margin-bottom: 16px;"></p>
+      <div class="btn-row">
+        <button type="button" id="btn-cancel-confirm-modal">Cancel</button>
+        <button type="button" id="btn-execute-confirm-modal" class="danger-btn">Confirm</button>
       </div>
     </div>
   </div>
