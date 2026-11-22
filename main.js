@@ -111,13 +111,19 @@ function triggerLevel25Juice(elementId) {
   }
 }
 
+function getUnlockedThemeTier() {
+  const currentIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  const highestIdx = typeof GameState !== "undefined" ? (GameState.highestContinentReached || 0) : 0;
+  return Math.max(currentIdx, highestIdx);
+}
+
 function isThemeUnlocked(themeObj) {
-  const conqueredIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
+  const unlockedTier = getUnlockedThemeTier();
   const hasGoldUi = typeof GameState !== "undefined" ? Boolean(GameState.goldUiUnlocked) : false;
   if (themeObj.requiresGoldUi) {
-    return hasGoldUi || conqueredIdx >= themeObj.minContinent;
+    return hasGoldUi || unlockedTier >= themeObj.minContinent;
   }
-  return conqueredIdx >= themeObj.minContinent;
+  return unlockedTier >= themeObj.minContinent;
 }
 
 function refreshThemeDropdown() {
@@ -181,9 +187,9 @@ function refreshPrestigeMenuUI() {
   const descEl = getEl("prestige-menu-desc");
   if (descEl) {
     if (canClaimPending) {
-      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America. <strong>Full Wipe</strong> erases everything.`;
+      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America while keeping unlocked themes. <strong>Full Wipe</strong> erases everything.`;
     } else {
-      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash) &amp; achievements. <strong>Full Wipe</strong> erases everything.`;
+      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash), unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases everything.`;
     }
   }
 }
@@ -201,7 +207,7 @@ function openActionConfirmation(actionType) {
     setText("confirm-modal-title", "[🥨★] Confirm Prestige Run");
     setText(
       "confirm-modal-body",
-      `Start a fresh run in North America? Your current pretzels, cash, upgrades, and territory progress will reset, while you keep ${totalAfter.toLocaleString()} Golden Pretzels (+${totalAfter * 25}% cash bonus), all unlocked achievements, and your best run records.`
+      `Start a fresh run in North America? Your current pretzels, cash, upgrades, and territory progress will reset, while you keep ${totalAfter.toLocaleString()} Golden Pretzels (+${totalAfter * 25}% cash bonus), unlocked themes, all unlocked achievements, and your best run records.`
     );
     if (execBtn) {
       execBtn.className = "expand-btn";
@@ -227,11 +233,13 @@ function openActionConfirmation(actionType) {
 
 function executePrestigeRun() {
   if (typeof GameState === "undefined" || typeof GameState.prestigeRestartRun !== "function") return;
+  const activeTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
   const canClaimPending = typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent();
   const { totalGold, bonusGold } = GameState.prestigeRestartRun(canClaimPending);
 
   resetRegionalPanelsUI();
   updateDemand();
+  applyTheme(activeTheme);
   applySessionUI();
   hideEl("confirm-action-modal");
   hideEl("restart-modal");
@@ -274,6 +282,7 @@ async function applyCloudUserSave(user) {
     GameState.applySaveObject(cloudSave);
     sanitizeNumbers();
     updateDemand();
+    refreshThemeDropdown();
     applySessionUI();
     logMessage(`Cloud save loaded for ${GameState.playerName}.`);
     render();
@@ -323,6 +332,50 @@ function getGallery() {
   return (typeof AsciiGallery !== "undefined" && Array.isArray(AsciiGallery) && AsciiGallery.length > 0)
     ? AsciiGallery
     : FALLBACK_ASCII;
+}
+
+function getDominanceForStage() {
+  if (typeof AchievementManager !== "undefined" && typeof AchievementManager.getDominancePercent === "function") {
+    return AchievementManager.getDominancePercent();
+  }
+  return 0;
+}
+
+function getEvolvedAscii() {
+  const gallery = getGallery();
+  const base = gallery[GameState.selectedAsciiIndex] || gallery[0];
+  const domPct = getDominanceForStage();
+  const sparkFrame = ["✦", "✧", "★", "·"][Math.floor(Date.now() / 350) % 4];
+
+  if (domPct >= 100) {
+    return `👑 ═══ KING OF PRETZELS ═══ 👑\n${sparkFrame} ${base} ${sparkFrame}\n👑 ════ 100% DOMINANCE ════ 👑`;
+  }
+  if (domPct >= 75) {
+    return `${sparkFrame} ─── ${domPct}% NEAR CROWN ─── ${sparkFrame}\n${base}\n✦ ─────────────────────── ✦`;
+  }
+  if (domPct >= 40) {
+    return `· ${sparkFrame} ── ${domPct}% CONQUEST ── ${sparkFrame} ·\n${base}`;
+  }
+  if (domPct >= 15) {
+    return `  ·  ${sparkFrame}  ·  \n${base}`;
+  }
+  return base;
+}
+
+function applyStageAnimationTier(domPct) {
+  const asciiEl = getEl("ascii-stage");
+  if (!asciiEl) return;
+
+  asciiEl.classList.remove("ascii-sway", "ascii-anim-tier-1", "ascii-anim-tier-2", "ascii-anim-tier-3", "ascii-anim-king");
+  if (domPct >= 100) {
+    asciiEl.classList.add("ascii-anim-king");
+  } else if (domPct >= 75) {
+    asciiEl.classList.add("ascii-anim-tier-3");
+  } else if (domPct >= 40) {
+    asciiEl.classList.add("ascii-anim-tier-2");
+  } else if (domPct >= 15) {
+    asciiEl.classList.add("ascii-anim-tier-1");
+  }
 }
 
 window.startGameFromModal = function() {
@@ -441,7 +494,64 @@ const Projects = [
       GameState.unlockedMinigame = true;
       showEl("rp-badge");
       showEl("panel-minigame");
+      updateRangeTargetsUI();
       logMessage("R&D Test Range online! Shoot the target for RP.");
+    }
+  },
+  {
+    id: "range_targets_2",
+    icon: "[◎]",
+    title: "Dual Moving Range Targets",
+    desc: "Adds a 2nd sliding target on the Ballistic Dough Tester at a different speed.",
+    cashCost: 600,
+    rpCost: 8,
+    trigger: () => GameState.unlockedMinigame,
+    effect: () => {
+      GameState.rangeTargetCount = Math.max(GameState.rangeTargetCount || 1, 2);
+      updateRangeTargetsUI();
+      logMessage("Ballistic Range upgraded to 2 moving targets!");
+    }
+  },
+  {
+    id: "range_targets_3",
+    icon: "[◎]",
+    title: "Triple Oscillating Range Targets",
+    desc: "Adds a 3rd sliding target moving out of phase on the Ballistic Dough Tester.",
+    cashCost: 1800,
+    rpCost: 16,
+    trigger: () => GameState.unlockedMinigame && (GameState.rangeTargetCount || 1) >= 2,
+    effect: () => {
+      GameState.rangeTargetCount = Math.max(GameState.rangeTargetCount || 1, 3);
+      updateRangeTargetsUI();
+      logMessage("Ballistic Range upgraded to 3 moving targets!");
+    }
+  },
+  {
+    id: "range_targets_4",
+    icon: "[◎]",
+    title: "Quad Staggered Range Targets",
+    desc: "Adds a 4th target with a distinct rhythm on the Ballistic Dough Tester.",
+    cashCost: 5500,
+    rpCost: 28,
+    trigger: () => GameState.unlockedMinigame && (GameState.rangeTargetCount || 1) >= 3,
+    effect: () => {
+      GameState.rangeTargetCount = Math.max(GameState.rangeTargetCount || 1, 4);
+      updateRangeTargetsUI();
+      logMessage("Ballistic Range upgraded to 4 moving targets!");
+    }
+  },
+  {
+    id: "range_targets_5",
+    icon: "[🎯]",
+    title: "Pentagram Ballistic Target Array (Max)",
+    desc: "Unlocks all 5 staggered targets on the Ballistic Dough Tester.",
+    cashCost: 15000,
+    rpCost: 45,
+    trigger: () => GameState.unlockedMinigame && (GameState.rangeTargetCount || 1) >= 4,
+    effect: () => {
+      GameState.rangeTargetCount = 5;
+      updateRangeTargetsUI();
+      logMessage("Ballistic Range maxed out at 5 targets!");
     }
   },
   {
@@ -849,12 +959,6 @@ const Projects = [
       logMessage("RP Breakthrough: Drones boosted by 3x!");
     }
   },
-
-  // ==========================================
-  // CONTINENT-EXCLUSIVE UPGRADES (BETA.6)
-  // ==========================================
-
-  // South America (Continent 2 / index >= 1)
   {
     id: "sa_recipe_dulce",
     icon: "[🍮]",
@@ -899,8 +1003,6 @@ const Projects = [
       logMessage("South America Upgrade: Supply Chain boosted by 3x!");
     }
   },
-
-  // Europe (Continent 3 / index >= 2)
   {
     id: "eu_recipe_truffle",
     icon: "[🍄]",
@@ -944,8 +1046,6 @@ const Projects = [
       logMessage("Europe Upgrade: Freight Barges (4x Trucks) & +$5.00 dip bonus!");
     }
   },
-
-  // Africa (Continent 4 / index >= 3)
   {
     id: "af_recipe_berbere",
     icon: "[🌶️]",
@@ -990,8 +1090,6 @@ const Projects = [
       logMessage("Africa Upgrade: Bulk Rail Grid boosted Supply Chain by 5x!");
     }
   },
-
-  // Asia (Continent 5 / index >= 4)
   {
     id: "as_recipe_matcha",
     icon: "[🍵]",
@@ -1035,8 +1133,6 @@ const Projects = [
       logMessage("Asia Upgrade: AI Swarm Drones (5x Drones) & +$15.00 dip bonus!");
     }
   },
-
-  // Oceania (Continent 6 / index >= 5)
   {
     id: "oc_recipe_macadamia",
     icon: "[🥥]",
@@ -1081,8 +1177,6 @@ const Projects = [
       logMessage("Oceania Upgrade: Bio-Refineries boosted Supply Chain by 8x!");
     }
   },
-
-  // Antarctica (Continent 7 / index >= 6)
   {
     id: "an_recipe_glacier",
     icon: "[🧊]",
@@ -1137,10 +1231,19 @@ let liveCashPerSec = 0;
 let manualBakeHistory = [];
 let crosshairPos = 10;
 let crosshairDir = 1;
+let rangeAnimClock = 0;
 let lastAnimTime = null;
 let lastShotTime = 0;
 let controlsBound = false;
 let globeSpinTimer = 0;
+
+const RANGE_TARGET_CONFIGS = [
+  { center: 50, amp: 0,  speed: 0,    phase: 0.0 },
+  { center: 50, amp: 26, speed: 1.65, phase: 0.0 },
+  { center: 50, amp: 32, speed: 2.35, phase: 1.8 },
+  { center: 50, amp: 22, speed: 3.10, phase: 3.6 },
+  { center: 50, amp: 35, speed: 1.25, phase: 5.1 }
+];
 
 const SALT_BASE_RATE = 250;
 const WHEAT_BASE_RATE = 350;
@@ -1210,6 +1313,8 @@ function formatDuration(totalSeconds) {
 function sanitizeNumbers() {
   if (typeof GameState === "undefined") return;
   if (!Number.isFinite(GameState.continentIndex)) GameState.continentIndex = 0;
+  if (!Number.isFinite(GameState.highestContinentReached)) GameState.highestContinentReached = 0;
+  GameState.highestContinentReached = Math.max(GameState.continentIndex, GameState.highestContinentReached);
   if (!Number.isFinite(GameState.goldenPretzels)) GameState.goldenPretzels = 0;
   if (!Number.isFinite(GameState.lifetimePretzelsAllRuns)) GameState.lifetimePretzelsAllRuns = 0;
   if (!Number.isFinite(GameState.runStartTime)) GameState.runStartTime = Date.now();
@@ -1223,6 +1328,8 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.inventory)) GameState.inventory = 0;
   if (!Number.isFinite(GameState.funds)) GameState.funds = 0;
   if (!Number.isFinite(GameState.researchPoints)) GameState.researchPoints = 0;
+  if (!Number.isFinite(GameState.rangeTargetCount) || GameState.rangeTargetCount < 1) GameState.rangeTargetCount = 1;
+  if (GameState.rangeTargetCount > 5) GameState.rangeTargetCount = 5;
   if (!Number.isFinite(GameState.dough)) GameState.dough = 200;
   if (!Number.isFinite(GameState.doughBatchSize) || GameState.doughBatchSize < 500) GameState.doughBatchSize = 500;
   if (!Number.isFinite(GameState.doughCost) || GameState.doughCost <= 0) GameState.doughCost = 12.00;
@@ -1471,32 +1578,51 @@ function updateDemand() {
   GameState.demand = Math.max(1, Math.round(rawDemand));
 }
 
-function getEvolvedAscii() {
-  const gallery = getGallery();
-  const base = gallery[GameState.selectedAsciiIndex] || gallery[0];
-  const total = GameState.pretzels;
+function getActiveRangeTargets() {
+  const count = Math.max(1, Math.min(5, GameState.rangeTargetCount || 1));
+  const targets = [];
+  for (let i = 0; i < count; i++) {
+    const cfg = RANGE_TARGET_CONFIGS[i];
+    const pos = i === 0
+      ? 50
+      : Math.max(12, Math.min(88, cfg.center + Math.sin(rangeAnimClock * cfg.speed + cfg.phase) * cfg.amp));
+    targets.push(pos);
+  }
+  return targets;
+}
 
-  if (total >= 100000) return `★ ═══════════════ ★\n${base}\n★ ═══ EMPIRE ════ ★`;
-  if (total >= 25000)  return `✦ ─────────────── ✦\n${base}\n✦ ─────────────── ✦`;
-  if (total >= 5000)   return `.─────────────────.\n${base}\n'─────────────────'`;
-  if (total >= 500)    return `  ·  *  ·  *  ·  \n${base}`;
-  return base;
+function updateRangeTargetsUI() {
+  const count = Math.max(1, Math.min(5, GameState.rangeTargetCount || 1));
+  setText("range-target-count-label", count);
+  const positions = getActiveRangeTargets();
+
+  for (let i = 0; i < 5; i++) {
+    const el = getEl(`range-target-${i}`);
+    if (!el) continue;
+    if (i < count) {
+      el.classList.remove("hidden");
+      el.style.left = `${positions[i]}%`;
+    } else {
+      el.classList.add("hidden");
+    }
+  }
 }
 
 function buildPlinkoBucketRow() {
   const slots = Array(PLINKO_INNER_COLS).fill(" ");
   const putToken = (startIdx, token) => {
     for (let i = 0; i < token.length; i++) {
-      if (startIdx + i >= 0 && startIdx + i < PLINKO_INNER_COLS) {
-        slots[startIdx + i] = token[i];
+      const idx = startIdx + i;
+      if (idx >= 0 && idx < PLINKO_INNER_COLS) {
+        slots[idx] = token[i];
       }
     }
   };
 
   putToken(1, "[X]");
-  putToken(5, "[🌾]");
-  putToken(8, "[★]");
-  putToken(11, "[🌾]");
+  putToken(4, "[🌾]");
+  putToken(7, "[★]");
+  putToken(10, "[🌾]");
   putToken(13, "[X]");
 
   return `|${slots.join("")}|`;
@@ -1560,12 +1686,12 @@ function dropPlinkoPretzel() {
 }
 
 function resolvePlinkoBucket(finalCol) {
-  if (finalCol === 9) {
+  if (finalCol >= 8 && finalCol <= 10) {
     GameState.goldenRushEndTime = Date.now() + 30000;
     setText("plinko-feedback", "RARE JACKPOT [★]! 30s GOLDEN RUSH!");
     logMessage("GOLDEN RUSH! 2x Cash & rare Golden Pretzels for 30s!");
     spawnFallingGoldenPretzel();
-  } else if ((finalCol >= 5 && finalCol <= 8) || (finalCol >= 10 && finalCol <= 13)) {
+  } else if ((finalCol >= 4 && finalCol <= 7) || (finalCol >= 11 && finalCol <= 14)) {
     const freeDough = Math.max(250, Math.round((GameState.doughBatchSize || 500) * 0.5));
     GameState.dough += freeDough;
     setText("plinko-feedback", `LANDED IN [🌾]: Won +${freeDough.toLocaleString()} lbs Dough!`);
@@ -1625,20 +1751,30 @@ function shootTarget() {
   lastShotTime = now;
 
   const trackEl = getEl("range-track");
-  const distFromCenter = Math.abs(crosshairPos - 50);
+  const targets = getActiveRangeTargets();
+  let bestReward = 0;
+
+  targets.forEach(targetPos => {
+    const dist = Math.abs(crosshairPos - targetPos);
+    if (dist <= 5.5) {
+      bestReward = Math.max(bestReward, 3);
+    } else if (dist <= 12) {
+      bestReward = Math.max(bestReward, 1);
+    }
+  });
 
   if (trackEl) {
     trackEl.classList.remove("flash-hit", "flash-miss");
     void trackEl.offsetWidth;
   }
 
-  if (distFromCenter <= 6) {
+  if (bestReward >= 3) {
     GameState.researchPoints += 3;
-    setText("range-feedback", "BULLSEYE! +3 RP");
+    setText("range-feedback", `BULLSEYE! +3 RP (${targets.length} targets active)`);
     if (trackEl) trackEl.classList.add("flash-hit");
-  } else if (distFromCenter <= 15) {
+  } else if (bestReward >= 1) {
     GameState.researchPoints += 1;
-    setText("range-feedback", "Nice graze! +1 RP");
+    setText("range-feedback", `Nice graze! +1 RP (${targets.length} targets active)`);
     if (trackEl) trackEl.classList.add("flash-hit");
   } else {
     setText("range-feedback", "Missed! Keep firing.");
@@ -1704,7 +1840,9 @@ function resetRegionalPanelsUI() {
 
 function applySessionUI() {
   setText("display-player-name", GameState.playerName);
+  const domPct = getDominanceForStage();
   setText("ascii-stage", getEvolvedAscii());
+  applyStageAnimationTier(domPct);
   hideEl("title-intro-screen");
   hideEl("setup-modal");
 
@@ -1727,6 +1865,7 @@ function applySessionUI() {
   if (GameState.unlockedMinigame) {
     showEl("rp-badge");
     showEl("panel-minigame");
+    updateRangeTargetsUI();
   }
   if (GameState.unlockedPlinko) {
     showEl("panel-plinko");
@@ -2159,6 +2298,12 @@ function bindControls() {
   onClick("btn-drop-plinko", dropPlinkoPretzel);
 
   window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      hideEl("achievements-modal");
+      hideEl("confirm-action-modal");
+      hideEl("restart-modal");
+      return;
+    }
     if (e.code === "Space" && GameState.started && GameState.unlockedMinigame) {
       if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT")) return;
       e.preventDefault();
@@ -2258,6 +2403,16 @@ function render() {
     } else {
       hideEl("header-gold-pill");
     }
+  }
+
+  const currentContIdx = GameState.continentIndex || 0;
+  const availableProjects = Projects.filter(p => !p.minContinent || currentContIdx >= p.minContinent);
+  const completedAvailableCount = availableProjects.filter(p => GameState.completedProjects.includes(p.id)).length;
+  setText("rd-completed-count", completedAvailableCount);
+  setText("rd-total-count", availableProjects.length);
+
+  if (GameState.unlockedMinigame) {
+    updateRangeTargetsUI();
   }
 
   const bakeRate = getEffectiveBakeRate();
@@ -2360,7 +2515,8 @@ function render() {
   }
 
   const canAffordDough = GameState.funds >= GameState.doughCost;
-  const isOutAndBroke = GameState.dough < 1 && !canAffordDough;
+  const autoBuyerActive = Boolean(GameState.unlockedAutoDough && GameState.autoDoughEnabled);
+  const isOutAndBroke = GameState.dough < 1 && !canAffordDough && !autoBuyerActive;
   if (isOutAndBroke) {
     showEl("panel-hand-dough");
   } else {
@@ -2378,15 +2534,15 @@ function render() {
 
   const doughStatus = getEl("dough-status");
   if (doughStatus) {
-    if (GameState.dough < 1 && canAffordDough) {
+    if (autoBuyerActive) {
+      doughStatus.textContent = "1 lb dough = 1 pretzel";
+      doughStatus.style.color = "";
+    } else if (GameState.dough < 1 && canAffordDough) {
       doughStatus.textContent = "Out of dough! Click Buy above to restock.";
       doughStatus.style.color = "#e89f48";
     } else if (GameState.dough < 1) {
       doughStatus.textContent = "OUT OF DOUGH & FUNDS! Use Emergency Maker.";
       doughStatus.style.color = "#ff6b5b";
-    } else if (GameState.dough < Math.max(50, batchSize * 0.2)) {
-      doughStatus.textContent = "Low dough warning!";
-      doughStatus.style.color = "#e89f48";
     } else {
       doughStatus.textContent = "1 lb dough = 1 pretzel";
       doughStatus.style.color = "";
@@ -2428,11 +2584,12 @@ function render() {
   setDisabled("btn-buy-drone", GameState.funds < GameState.droneCost);
   setDisabled("btn-sell-drone", GameState.drones <= 0);
 
+  const domPct = getDominanceForStage();
   const asciiEl = getEl("ascii-stage");
   if (asciiEl) {
     const evolved = getEvolvedAscii();
     if (asciiEl.textContent !== evolved) asciiEl.textContent = evolved;
-    asciiEl.classList.toggle("ascii-sway", GameState.pretzels >= 25000);
+    applyStageAnimationTier(domPct);
   }
 
   Projects.forEach(proj => {
@@ -2453,6 +2610,7 @@ function animateMinigames(timestamp) {
 
   if (GameState.started) {
     if (GameState.unlockedMinigame) {
+      rangeAnimClock += dt;
       const speedPercentPerSec = 95;
       crosshairPos += crosshairDir * speedPercentPerSec * dt;
 
@@ -2469,6 +2627,7 @@ function animateMinigames(timestamp) {
         ch.style.left = `${crosshairPos}%`;
         ch.style.transform = "translate(-50%, -50%)";
       }
+      updateRangeTargetsUI();
     }
 
     if (GameState.unlockedPlinko) {

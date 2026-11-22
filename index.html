@@ -34,7 +34,7 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA.6 • EARTH CONQUEST EDITION</div>
+    <div class="intro-bottom-version">BETA.6.2 • EARTH CONQUEST EDITION</div>
   </div>
 
   <!-- Start Setup -->
@@ -263,7 +263,7 @@
       </div>
 
       <div class="option-group" style="margin-bottom: 16px;">
-        <label for="select-theme">Color Theme (Unlock More by Conquering Continents &amp; Finale)</label>
+        <label for="select-theme">Color Theme (Unlocked Themes Stay Unlocked After Prestige)</label>
         <select id="select-theme" class="theme-select"></select>
       </div>
 
@@ -272,7 +272,7 @@
         <span id="prestige-keep-pill" class="tier-badge">Keep 0 [🥨★] (+0%)</span>
       </div>
       <p id="prestige-menu-desc" class="subtext" style="margin-bottom: 12px;">
-        <strong>Prestige</strong> starts a fresh run in North America while keeping Golden Pretzels &amp; achievements. <strong>Full Wipe</strong> erases everything.
+        <strong>Prestige</strong> starts a fresh run in North America while keeping Golden Pretzels, unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases everything.
       </p>
       <div class="btn-row">
         <button type="button" id="btn-cancel-restart">Keep Baking</button>
@@ -427,7 +427,7 @@
             <button id="btn-buy-salt-mine">Open ($<span id="salt-mine-cost">2,500.00</span>)</button>
             <button id="btn-sell-salt-mine" class="sell-btn" disabled>Sell (+$<span id="salt-mine-sell-val">0.00</span>)</button>
           </div>
-          <p class="subtext">+<span id="salt-mine-rate">40</span> salt/sec • Payroll: -$<span id="salt-mine-payroll">0.00</span>/sec • <span id="salt-mine-next">Next: 10</span></p>
+          <p class="subtext">+<span id="salt-mine-rate">250</span> salt/sec • Payroll: -$<span id="salt-mine-payroll">0.00</span>/sec • <span id="salt-mine-next">Next: 10</span></p>
         </div>
 
         <div class="module-box" id="module-wheat-farm">
@@ -440,7 +440,7 @@
             <button id="btn-buy-wheat-farm">Plant ($<span id="wheat-farm-cost">4,000.00</span>)</button>
             <button id="btn-sell-wheat-farm" class="sell-btn" disabled>Sell (+$<span id="wheat-farm-sell-val">0.00</span>)</button>
           </div>
-          <p class="subtext">+<span id="wheat-farm-rate">60</span> wheat/sec • Payroll: -$<span id="wheat-farm-payroll">0.00</span>/sec • <span id="wheat-farm-next">Next: 10</span></p>
+          <p class="subtext">+<span id="wheat-farm-rate">350</span> wheat/sec • Payroll: -$<span id="wheat-farm-payroll">0.00</span>/sec • <span id="wheat-farm-next">Next: 10</span></p>
         </div>
 
         <div class="module-box" id="module-refinery">
@@ -453,7 +453,7 @@
             <button id="btn-buy-refinery">Build ($<span id="refinery-cost">8,500.00</span>)</button>
             <button id="btn-sell-refinery" class="sell-btn" disabled>Sell (+$<span id="refinery-sell-val">0.00</span>)</button>
           </div>
-          <p class="subtext">Refines <span id="refinery-rate">80</span> lbs/sec • Payroll: -$<span id="refinery-payroll">0.00</span>/sec • <span id="refinery-next">Next: 10</span></p>
+          <p class="subtext">Refines <span id="refinery-rate">600</span> lbs/sec • Payroll: -$<span id="refinery-payroll">0.00</span>/sec • <span id="refinery-next">Next: 10</span></p>
         </div>
 
       </div>
@@ -497,15 +497,22 @@
     <section class="row-panel hidden" id="panel-projects">
       <div class="row-header">
         <h2>[⚗] R&amp;D</h2>
-        <span id="rp-badge" class="rp-badge hidden">Research Points: <strong id="rp-total">0</strong> RP</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span id="rd-progress-badge" class="rp-badge">R&amp;D: <strong id="rd-completed-count">0</strong>/<strong id="rd-total-count">0</strong></span>
+          <span id="rp-badge" class="rp-badge hidden">Research Points: <strong id="rp-total">0</strong> RP</span>
+        </div>
       </div>
       <div class="row-items">
 
-        <!-- Target Mini-Game Box -->
+        <!-- Multi-Target Ballistic Dough Tester Box -->
         <div class="module-box hidden" id="panel-minigame">
-          <p><strong>[◎] Ballistic Dough Tester</strong></p>
+          <p><strong>[◎] Ballistic Dough Tester (<span id="range-target-count-label">1</span>/5 Targets)</strong></p>
           <div id="range-track" class="range-track">
-            <div class="range-target"></div>
+            <div id="range-target-0" class="range-target" style="left: 50%;"></div>
+            <div id="range-target-1" class="range-target hidden" style="left: 28%;"></div>
+            <div id="range-target-2" class="range-target hidden" style="left: 72%;"></div>
+            <div id="range-target-3" class="range-target hidden" style="left: 18%;"></div>
+            <div id="range-target-4" class="range-target hidden" style="left: 82%;"></div>
             <div id="range-crosshair" class="range-crosshair">+</div>
           </div>
           <button id="btn-shoot-target">Fire Test Shot [Space]</button>
@@ -517,7 +524,7 @@
           <p><strong>[🎰] ASCII Pretzel Plinko</strong></p>
           <pre id="plinko-board" class="plinko-board"></pre>
           <button id="btn-drop-plinko">Drop Pretzel (50 Inv)</button>
-          <p class="subtext" id="plinko-feedback">[X] Burnt | [🌾] Dough | [★] Rare 30s Rush</p>
+          <p class="subtext" id="plinko-feedback">[X] Burnt | [🌾] Dough | [★] 30s Rush</p>
         </div>
 
         <!-- Dynamic Research Cards -->

@@ -130,7 +130,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[🌎]",
     title: "Beyond Borders",
     desc: "Conquer North America and expand to South America.",
-    check: (s) => (s.continentIndex || 0) >= 1
+    check: (s) => Math.max(s.continentIndex || 0, s.highestContinentReached || 0) >= 1
   },
   {
     id: "golden_hoard_10",
@@ -158,7 +158,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[🧭]",
     title: "Hemisphere Hegemon",
     desc: "Reach the 4th territory (Africa) in your global conquest.",
-    check: (s) => (s.continentIndex || 0) >= 3
+    check: (s) => Math.max(s.continentIndex || 0, s.highestContinentReached || 0) >= 3
   },
   {
     id: "golden_hoard_30",
@@ -179,7 +179,7 @@ const ACHIEVEMENTS_LIST = [
     icon: "[🌐]",
     title: "World Domination",
     desc: "Conquer all 7 continents and enter Global Franchise mode.",
-    check: (s) => (s.continentIndex || 0) >= 7
+    check: (s) => Math.max(s.continentIndex || 0, s.highestContinentReached || 0) >= 7
   },
   {
     id: "ten_billion_cash",

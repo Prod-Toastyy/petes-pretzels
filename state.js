@@ -86,6 +86,7 @@ const DEFAULT_STATE = {
   bestRunSeconds: 0,
   bestRunPretzels: 0,
   goldUiUnlocked: false,
+  highestContinentReached: 0,
   endingSeenForRun: false,
 
   // Global Conquest Prestige
@@ -97,6 +98,7 @@ const DEFAULT_STATE = {
   inventory: 0,
   funds: 0.0,
   researchPoints: 0,
+  rangeTargetCount: 1,
 
   dough: 200,
   doughBatchSize: 500,
@@ -160,6 +162,12 @@ const DEFAULT_STATE = {
 const GameState = {
   ...JSON.parse(JSON.stringify(DEFAULT_STATE)),
 
+  syncHighestContinent() {
+    const currentIdx = Math.max(0, this.continentIndex || 0);
+    const prevHighest = Math.max(0, this.highestContinentReached || 0);
+    this.highestContinentReached = Math.max(currentIdx, prevHighest);
+  },
+
   getCurrentContinent() {
     const idx = Math.max(0, this.continentIndex || 0);
     if (idx < CONTINENTS.length) {
@@ -219,6 +227,7 @@ const GameState = {
   },
 
   recordRunProgress(addSeconds = 0) {
+    this.syncHighestContinent();
     if (addSeconds > 0) {
       this.elapsedRunSeconds = (this.elapsedRunSeconds || 0) + addSeconds;
     }
@@ -257,6 +266,7 @@ const GameState = {
     const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
     const nextContinentIdx = prevContinentIdx + 1;
+    const nextHighestContinent = Math.max(this.highestContinentReached || 0, prevContinentIdx, nextContinentIdx);
     const totalGold = (this.goldenPretzels || 0) + earnedGold;
     const unlockedGoldUi = Boolean(this.goldUiUnlocked || conqueringFinalWorld);
 
@@ -276,6 +286,7 @@ const GameState = {
     this.unlockedAchievements = preservedAchievements;
     this.lifetimePretzelsAllRuns = totalLifetime;
     this.continentIndex = nextContinentIdx;
+    this.highestContinentReached = nextHighestContinent;
     this.goldenPretzels = totalGold;
     this.goldUiUnlocked = unlockedGoldUi;
     this.bestRunSeconds = nextBestSecs;
@@ -306,6 +317,7 @@ const GameState = {
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
     const totalGold = (this.goldenPretzels || 0) + bonusGold;
     const unlockedGoldUi = Boolean(this.goldUiUnlocked);
+    const preservedHighestContinent = Math.max(this.highestContinentReached || 0, this.continentIndex || 0);
     const nextBestSecs = this.bestRunSeconds || 0;
     const nextBestPretzels = Math.max(this.bestRunPretzels || 0, Math.floor(this.pretzels || 0));
 
@@ -317,6 +329,7 @@ const GameState = {
     this.unlockedAchievements = preservedAchievements;
     this.lifetimePretzelsAllRuns = totalLifetime;
     this.continentIndex = 0;
+    this.highestContinentReached = preservedHighestContinent;
     this.goldenPretzels = totalGold;
     this.goldUiUnlocked = unlockedGoldUi;
     this.bestRunSeconds = nextBestSecs;
@@ -329,6 +342,7 @@ const GameState = {
   },
 
   getSnapshot() {
+    this.syncHighestContinent();
     this.lastTick = Date.now();
     const snapshot = {};
     for (const key of Object.keys(DEFAULT_STATE)) {
@@ -345,6 +359,7 @@ const GameState = {
       }
     }
 
+    this.syncHighestContinent();
     if (!this.runStartTime) this.runStartTime = Date.now();
 
     const batchSize = this.doughBatchSize || 500;
