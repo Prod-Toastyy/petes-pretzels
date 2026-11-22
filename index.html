@@ -59,13 +59,23 @@
     </div>
   </div>
 
-  <!-- Bakery Menu / Restart Modal -->
+  <!-- Bakery Menu / Options & Restart Modal -->
   <div id="restart-modal" class="modal-overlay hidden">
     <div class="modal-card small-modal">
       <div class="row-header">
         <h2>[⚙️] Bakery Options</h2>
         <button type="button" id="btn-close-restart" class="close-small-btn">Close</button>
       </div>
+
+      <div class="option-group" style="margin-bottom: 16px;">
+        <label for="select-theme">Color Theme</label>
+        <select id="select-theme" class="theme-select">
+          <option value="espresso">Warm Espresso (Default)</option>
+          <option value="terminal">Midnight Terminal</option>
+          <option value="copper">Bavarian Copper</option>
+        </select>
+      </div>
+
       <p class="subtext" style="margin-bottom: 14px;">
         Restarting will erase your current pretzels, funds, upgrades, and achievements and return to the bakery setup screen.
       </p>
@@ -119,7 +129,7 @@
         <div class="module-box">
           <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
           <p class="big-stat-line">Unsold Inventory: <strong id="inventory" class="big-stat-num">0</strong></p>
-          <p id="income-rate-line" class="income-rate-line hidden">Revenue: <strong>$<span id="income-per-sec">0.00</span>/sec</strong></p>
+          <p id="income-rate-line" class="income-rate-line hidden">Cash Flow: <strong>+$<span id="income-per-sec">0.00</span>/sec</strong></p>
           <div id="recipe-box" class="recipe-row hidden">
             <label for="select-recipe" class="subtext">Menu:</label>
             <select id="select-recipe"></select>
@@ -212,8 +222,8 @@
         <div class="module-box hidden" id="panel-plinko">
           <p><strong>[🎰] ASCII Pretzel Plinko</strong></p>
           <pre id="plinko-board" class="plinko-board"></pre>
-          <button id="btn-drop-plinko">Drop Pretzel (15 Inv)</button>
-          <p class="subtext" id="plinko-feedback">[X] Burnt | [🌾] Dough | [★] 30s Rush</p>
+          <button id="btn-drop-plinko">Drop Pretzel (50 Inv)</button>
+          <p class="subtext" id="plinko-feedback">[X] Burnt | [🌾] Dough | [★] Rare 30s Rush</p>
         </div>
 
         <!-- Dynamic Research Cards -->

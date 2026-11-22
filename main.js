@@ -1,3 +1,17 @@
+const THEME_STORAGE_KEY = "petes_pretzels_theme";
+
+function applyTheme(themeId) {
+  document.body.classList.remove("theme-terminal", "theme-copper");
+  if (themeId === "terminal") {
+    document.body.classList.add("theme-terminal");
+  } else if (themeId === "copper") {
+    document.body.classList.add("theme-copper");
+  }
+  const select = document.getElementById("select-theme");
+  if (select) select.value = themeId || "espresso";
+  localStorage.setItem(THEME_STORAGE_KEY, themeId || "espresso");
+}
+
 const FALLBACK_ASCII = [
   "   .-'```'-.   \n  /  .---.  \\  \n |  (  X  )  | \n  \\  '---'  /  \n   '-.___.-'   ",
   "   _.-'''-._   \n  / * .-. * \\  \n ( * (   ) * ) \n  \\ * '-' * /  \n   '-.....-'   ",
@@ -51,15 +65,15 @@ const Projects = [
   {
     id: "income_ticker",
     icon: "[📈]",
-    title: "Live Revenue Ticker",
-    desc: "Displays real-time cash earned per second under Unsold Inventory.",
+    title: "Live Cash Flow Meter",
+    desc: "Displays real-time incoming cash per second under Unsold Inventory.",
     cashCost: 40,
     rpCost: 0,
     trigger: () => GameState.pretzels >= 35,
     effect: () => {
       GameState.unlockedIncomeTicker = true;
       showEl("income-rate-line");
-      logMessage("Upgraded: Live $/sec revenue ticker installed.");
+      logMessage("Upgraded: Live $/sec cash flow meter installed.");
     }
   },
   {
@@ -132,21 +146,6 @@ const Projects = [
     }
   },
   {
-    id: "unlock_plinko",
-    icon: "[🎰]",
-    title: "ASCII Pretzel Plinko",
-    desc: "Unlocks the Plinko pegboard in R&D to win Dough or 30s Golden Rush!",
-    cashCost: 380,
-    rpCost: 0,
-    trigger: () => GameState.pretzels >= 350,
-    effect: () => {
-      GameState.unlockedPlinko = true;
-      showEl("panel-plinko");
-      renderPlinkoBoard();
-      logMessage("ASCII Plinko unlocked! Aim for the center [★] bucket.");
-    }
-  },
-  {
     id: "rp_auto_dough",
     icon: "[⚖️]",
     title: "Precision Auto-Dough Silo",
@@ -198,6 +197,21 @@ const Projects = [
     effect: () => {
       GameState.truckCapacity *= 2;
       logMessage("Upgraded: Delivery Trucks now haul 2x pretzels.");
+    }
+  },
+  {
+    id: "unlock_plinko",
+    icon: "[🎰]",
+    title: "ASCII Pretzel Plinko",
+    desc: "Unlocks high-stakes Plinko in R&D to win Dough or a rare 30s Golden Rush!",
+    cashCost: 1200,
+    rpCost: 10,
+    trigger: () => GameState.unlockedMinigame && GameState.pretzels >= 1500,
+    effect: () => {
+      GameState.unlockedPlinko = true;
+      showEl("panel-plinko");
+      renderPlinkoBoard();
+      logMessage("ASCII Plinko unlocked! Hit exact center [★] for Golden Rush.");
     }
   },
   {
@@ -444,6 +458,8 @@ const Projects = [
 ];
 
 let pendingSales = 0;
+let cashFlowHistory = [];
+let liveCashPerSec = 0;
 let crosshairPos = 10;
 let crosshairDir = 1;
 let lastAnimTime = null;
@@ -453,7 +469,8 @@ let controlsBound = false;
 // ASCII Plinko State (15 columns wide: indices 0..14)
 const PLINKO_COLS = 15;
 const PLINKO_ROWS = 6;
-const PLINKO_COST = 15;
+const PLINKO_COST = 50;
+const MAX_FALLING_PRETZELS = 3;
 let plinkoDropperPos = 7;
 let plinkoDropperDir = 1;
 let plinkoBall = null; // { row: 0..6, col: 0..14 }
@@ -672,8 +689,10 @@ function refreshRecipeDropdown() {
 function updateDemand() {
   const recipe = getSafeRecipe();
   const promoMult = 1 + ((GameState.promoLevel - 1) * 0.20);
-  const rawDemand = (0.50 / GameState.price) * 100 * GameState.demandBonus * recipe.demandMult * promoMult;
-  GameState.demand = Math.max(5, Math.round(rawDemand));
+  // Universal Paperclips-style elasticity curve (1 / price^1.18) creates a real price sweet spot
+  const priceElasticity = Math.pow(0.50 / GameState.price, 1.18);
+  const rawDemand = priceElasticity * 100 * GameState.demandBonus * recipe.demandMult * promoMult;
+  GameState.demand = Math.max(1, Math.round(rawDemand));
 }
 
 function getEvolvedAscii() {
@@ -721,15 +740,14 @@ function renderPlinkoBoard() {
     lines.push("|" + rowChars.join("") + "|");
   }
 
-  // Bottom 5 buckets (3 chars each = 15 chars wide)
-  // [0..2]: Burnt | [3..5]: Dough | [6..8]: 30s Rush | [9..11]: Dough | [12..14]: Burnt
-  lines.push("[X][🌾][★][🌾][X]");
+  // Bottom 5 buckets (exact center col 7 is the rare [★] jackpot)
+  lines.push("[X] [🌾] [★] [🌾] [X]");
   boardEl.textContent = lines.join("\n");
 }
 
 function dropPlinkoPretzel() {
   if (!GameState.started || !GameState.unlockedPlinko) return;
-  if (plinkoBall) return; // Wait for current ball to land
+  if (plinkoBall) return;
   if (GameState.inventory < PLINKO_COST) {
     setText("plinko-feedback", `Need ${PLINKO_COST} unsold pretzels to drop!`);
     return;
@@ -747,22 +765,22 @@ function dropPlinkoPretzel() {
 }
 
 function resolvePlinkoBucket(finalCol) {
-  if (finalCol <= 2 || finalCol >= 12) {
-    // Outer buckets: Burnt pretzel (nothing)
-    setText("plinko-feedback", "LANDED IN [X]: Burnt pretzel! Nothing won.");
-    logMessage("Plinko: Pretzel landed in the burnt [X] slot.");
-  } else if (finalCol >= 6 && finalCol <= 8) {
-    // Center bucket: 30s Golden Rush!
+  if (finalCol === 7) {
+    // Exact center column: rare 30s Golden Rush jackpot!
     GameState.goldenRushEndTime = Date.now() + 30000;
-    setText("plinko-feedback", "JACKPOT [★]! 30s GOLDEN RUSH ACTIVATED!");
-    logMessage("GOLDEN RUSH! 2x Cash & falling Golden Pretzels for 30s!");
+    setText("plinko-feedback", "RARE JACKPOT [★]! 30s GOLDEN RUSH!");
+    logMessage("GOLDEN RUSH! 2x Cash & rare Golden Pretzels for 30s!");
     spawnFallingGoldenPretzel();
-  } else {
-    // Mid-outer buckets: Free Dough!
+  } else if (finalCol >= 3 && finalCol <= 11) {
+    // Inner buckets: Free Dough!
     const freeDough = Math.max(250, Math.round((GameState.doughBatchSize || 500) * 0.5));
     GameState.dough += freeDough;
     setText("plinko-feedback", `LANDED IN [🌾]: Won +${freeDough.toLocaleString()} lbs Dough!`);
     logMessage(`Plinko Winner! Won +${freeDough.toLocaleString()} lbs of fresh dough.`);
+  } else {
+    // Outer buckets: Burnt pretzel (nothing)
+    setText("plinko-feedback", "LANDED IN [X]: Burnt pretzel! Nothing won.");
+    logMessage("Plinko: Pretzel landed in the burnt [X] slot.");
   }
   render();
 }
@@ -770,6 +788,7 @@ function resolvePlinkoBucket(finalCol) {
 function spawnFallingGoldenPretzel() {
   const sky = document.getElementById("golden-sky-layer");
   if (!sky || !GameState.isGoldenRushActive()) return;
+  if (sky.childElementCount >= MAX_FALLING_PRETZELS) return;
 
   const el = document.createElement("button");
   el.type = "button";
@@ -777,7 +796,7 @@ function spawnFallingGoldenPretzel() {
   el.textContent = "🥨";
   el.title = "Click for Golden Pretzel Bonus!";
 
-  const leftPct = 8 + Math.random() * 84;
+  const leftPct = 10 + Math.random() * 80;
   el.style.left = `${leftPct}%`;
   sky.appendChild(el);
 
@@ -787,7 +806,6 @@ function spawnFallingGoldenPretzel() {
     if (collected) return;
     collected = true;
 
-    // Reward scaled to current progression: max of 15s bake output, 12% of total pretzels, or 25 pretzels
     const bakeRate = GameState.getBakeRate ? GameState.getBakeRate() : (GameState.extruders * GameState.extruderSpeed);
     const reward = Math.max(
       25,
@@ -946,11 +964,20 @@ function bindControls() {
     hideEl("restart-modal");
   });
 
+  const themeSelect = document.getElementById("select-theme");
+  if (themeSelect) {
+    themeSelect.addEventListener("change", (e) => {
+      applyTheme(e.target.value);
+    });
+  }
+
   onClick("btn-confirm-restart", () => {
     if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
       GameState.reset();
     }
     pendingSales = 0;
+    cashFlowHistory = [];
+    liveCashPerSec = 0;
     plinkoBall = null;
 
     document.body.classList.remove("golden-rush-active");
@@ -1191,11 +1218,7 @@ function render() {
 
   if (GameState.unlockedIncomeTicker) {
     showEl("income-rate-line");
-    const sustainableSalesPerSec = wholeInventory > 0
-      ? effectiveDelivery
-      : Math.min(bakeRate, effectiveDelivery);
-    const cashPerSec = sustainableSalesPerSec * netPrice;
-    setText("income-per-sec", cashPerSec.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    setText("income-per-sec", liveCashPerSec.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   }
 
   const canAffordDough = GameState.funds >= GameState.doughCost;
@@ -1229,7 +1252,7 @@ function render() {
       doughStatus.style.color = "#e89f48";
     } else {
       doughStatus.textContent = "1 lb dough = 1 pretzel";
-      doughStatus.style.color = "#b59f8d";
+      doughStatus.style.color = "";
     }
   }
 
@@ -1311,7 +1334,7 @@ function animateMinigames(timestamp) {
     // 2. ASCII Plinko Dropper & Ball Physics
     if (GameState.unlockedPlinko) {
       if (!plinkoBall) {
-        const dropperSpeedColsPerSec = 13;
+        const dropperSpeedColsPerSec = 15;
         plinkoDropperPos += plinkoDropperDir * dropperSpeedColsPerSec * dt;
         if (plinkoDropperPos >= PLINKO_COLS - 2) {
           plinkoDropperPos = PLINKO_COLS - 2;
@@ -1326,8 +1349,13 @@ function animateMinigames(timestamp) {
         if (plinkoStepTimer >= 0.14) {
           plinkoStepTimer = 0;
           plinkoBall.row += 1;
-          // Bounce randomly left or right by 1 column on each peg row
-          const nudge = Math.random() < 0.5 ? -1 : 1;
+
+          // Slight outward drift near center so exact col 7 [★] is a true rare jackpot
+          let leftChance = 0.5;
+          if (plinkoBall.col === 6) leftChance = 0.68;
+          else if (plinkoBall.col === 8) leftChance = 0.32;
+
+          const nudge = Math.random() < leftChance ? -1 : 1;
           plinkoBall.col = Math.max(1, Math.min(PLINKO_COLS - 2, plinkoBall.col + nudge));
           renderPlinkoBoard();
 
@@ -1350,6 +1378,9 @@ function bootGame() {
     logMessage("Error: state.js did not load. Check file folder.");
     return;
   }
+
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
+  applyTheme(savedTheme);
 
   const offlineSeconds = GameState.load();
   sanitizeNumbers();
@@ -1385,6 +1416,8 @@ function bootGame() {
       bakePretzels(rawBakeRate / 10);
     }
 
+    let tickCashEarned = 0;
+
     if (GameState.inventory > 0) {
       const maxDelivery = 1 + (GameState.trucks * GameState.truckCapacity) + (GameState.drones * GameState.droneCapacity);
       const demandFactor = GameState.demand / 100;
@@ -1396,7 +1429,8 @@ function bootGame() {
         const actualSold = Math.min(GameState.inventory, wantToSell);
         if (actualSold > 0) {
           GameState.inventory -= actualSold;
-          GameState.funds += actualSold * netPrice;
+          tickCashEarned = actualSold * netPrice;
+          GameState.funds += tickCashEarned;
           pendingSales -= actualSold;
         }
       }
@@ -1404,8 +1438,19 @@ function bootGame() {
       pendingSales = 0;
     }
 
-    // Spawn occasional falling Golden Pretzels during 30s Golden Rush
-    if (GameState.isGoldenRushActive() && Math.random() < 0.08) {
+    // Track actual cash added to funds over a smoothed 4-second rolling window
+    const nowMs = Date.now();
+    if (tickCashEarned > 0) {
+      cashFlowHistory.push({ time: nowMs, amount: tickCashEarned });
+    }
+    const windowMs = 4000;
+    cashFlowHistory = cashFlowHistory.filter(entry => nowMs - entry.time <= windowMs);
+    const totalWindowCash = cashFlowHistory.reduce((sum, entry) => sum + entry.amount, 0);
+    const rawWindowRate = totalWindowCash / (windowMs / 1000);
+    liveCashPerSec = (liveCashPerSec * 0.85) + (rawWindowRate * 0.15);
+
+    // Spawn occasional falling Golden Pretzels during 30s Golden Rush (capped at 3 on screen)
+    if (GameState.isGoldenRushActive() && Math.random() < 0.025) {
       spawnFallingGoldenPretzel();
     }
 
