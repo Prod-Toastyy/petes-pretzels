@@ -48,19 +48,40 @@
     };
   </script>
 
-  <!-- Dominance & Achievements Hub Modal -->
+  <!-- Global Conquest, Dominance & Achievements Hub Modal -->
   <div id="achievements-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="row-header">
-        <h2>[🏆] Progress & Achievements (<span id="ach-bonus-pct">+0%</span> Income Bonus)</h2>
+        <h2>[🏆] Global Conquest & Achievements (<span id="ach-bonus-pct">+0%</span> Total Bonus)</h2>
         <button type="button" id="btn-close-achievements" class="close-small-btn">Close</button>
+      </div>
+
+      <!-- Continent Expansion & Prestige Card -->
+      <div class="conquest-card">
+        <div class="conquest-top">
+          <div>
+            <div class="conquest-kicker">CURRENT TERRITORY (<span id="modal-continent-step">1/7</span>)</div>
+            <h3 id="modal-continent-name">[🌎] North America</h3>
+          </div>
+          <div class="gold-pretzel-pill">
+            [🥨★] <strong id="modal-gold-pretzels">0</strong> Golden Pretzels (<span id="modal-gold-bonus">+0%</span> Cash)
+          </div>
+        </div>
+
+        <p class="subtext" id="modal-conquest-reqs">
+          Requirements to expand to <strong id="modal-next-continent">South America</strong>: 100% Dominance, $50,000,000 Cash &amp; 10,000,000 Pretzels.
+        </p>
+
+        <button type="button" id="btn-expand-continent" class="expand-btn" disabled>
+          Expand to <span id="btn-next-continent-name">South America</span> (+<span id="btn-pending-gold">4</span> [🥨★])
+        </button>
       </div>
 
       <!-- Dual Progress Bars -->
       <div class="progress-hub-bars">
         <div class="progress-bar-block">
           <div class="progress-bar-label">
-            <span><strong>Regional Dominance</strong> (Target: 10M Pretzels, $50M Cash, R&D & Supply)</span>
+            <span><strong>Regional Dominance</strong> (Pretzels, Cash, R&amp;D &amp; Supply Chain)</span>
             <strong id="modal-dom-pct">0%</strong>
           </div>
           <div class="progress-track">
@@ -101,7 +122,7 @@
       </div>
 
       <p class="subtext" style="margin-bottom: 14px;">
-        Restarting will erase your current pretzels, funds, upgrades, and achievements and return to the bakery setup screen.
+        Restarting will erase your current pretzels, funds, upgrades, continents, and achievements and return to the bakery setup screen.
       </p>
       <div class="btn-row">
         <button type="button" id="btn-cancel-restart">Keep Baking</button>
@@ -125,7 +146,7 @@
       <span class="badge-label">Funds</span>
       <span class="badge-value">$<span id="top-funds">0.00</span></span>
     </div>
-    <button type="button" id="btn-open-achievements" class="top-ach-btn" title="Dominance & Achievements">
+    <button type="button" id="btn-open-achievements" class="top-ach-btn" title="Global Conquest & Achievements">
       [🏆] Dom: <span id="top-dom-pct">0%</span> | Ach: <span id="top-ach-pct">0%</span>
     </button>
     <button type="button" id="player-badge" class="player-badge-btn" title="Bakery Options">
@@ -136,6 +157,10 @@
   <!-- Header & Selected ASCII -->
   <header>
     <div>
+      <div class="header-territory-row">
+        <span class="territory-pill">[🌎] <strong id="header-continent-name">North America</strong></span>
+        <span id="header-gold-pill" class="gold-pill hidden">[🥨★] <strong id="header-gold-count">0</strong> (<span id="header-gold-bonus">+0%</span>)</span>
+      </div>
       <h1>Pretzels Baked: <span id="pretzels-total">0</span></h1>
       <p class="subtext">Rate: <span id="bake-rate">0.0</span>/sec baked | <span id="sell-rate">1.0</span>/sec max delivery</p>
     </div>

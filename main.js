@@ -517,7 +517,7 @@ const PLINKO_COST = 50;
 const MAX_FALLING_PRETZELS = 3;
 let plinkoDropperPos = 9;
 let plinkoDropperDir = 1;
-let plinkoBall = null; // { row: 0..6, col: 0..18 }
+let plinkoBall = null;
 let plinkoStepTimer = 0;
 
 function setText(id, val) {
@@ -595,6 +595,10 @@ function formatDuration(totalSeconds) {
 
 function sanitizeNumbers() {
   if (typeof GameState === "undefined") return;
+  if (!Number.isFinite(GameState.continentIndex)) GameState.continentIndex = 0;
+  if (!Number.isFinite(GameState.goldenPretzels)) GameState.goldenPretzels = 0;
+  if (!Number.isFinite(GameState.lifetimePretzelsAllRuns)) GameState.lifetimePretzelsAllRuns = 0;
+
   if (!Number.isFinite(GameState.pretzels)) GameState.pretzels = 0;
   if (!Number.isFinite(GameState.inventory)) GameState.inventory = 0;
   if (!Number.isFinite(GameState.funds)) GameState.funds = 0;
@@ -606,7 +610,6 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.kneadClicks)) GameState.kneadClicks = 0;
   if (!Number.isFinite(GameState.handMadeDoughTotal)) GameState.handMadeDoughTotal = 0;
 
-  // Supply Chain defaults
   if (typeof GameState.unlockedSupplyChain !== "boolean") GameState.unlockedSupplyChain = false;
   if (typeof GameState.supplyChainEnabled !== "boolean") GameState.supplyChainEnabled = true;
   if (!Number.isFinite(GameState.salt)) GameState.salt = 0;
@@ -657,8 +660,9 @@ function getEffectivePriceSafe() {
   }
   const r = getSafeRecipe();
   const achBonus = 1 + ((GameState.unlockedAchievements?.length || 0) * 0.01);
+  const goldBonus = 1 + ((GameState.goldenPretzels || 0) * 0.25);
   const rushMult = Date.now() < (GameState.goldenRushEndTime || 0) ? 2.0 : 1.0;
-  return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * rushMult * 100) / 100;
+  return Math.round(((GameState.price * r.priceMult) + (GameState.dipBonus || 0)) * achBonus * goldBonus * rushMult * 100) / 100;
 }
 
 function getEffectiveBakeRate() {
@@ -675,7 +679,6 @@ function getEffectiveMaxDelivery() {
     + (GameState.drones * GameState.droneCapacity * droneMult);
 }
 
-// Progressive Payroll Scaling: scales with unit count & tier so late-game wages stay meaningful
 function getFacilityPayrollPerSec(count, baseRate) {
   if (count <= 0) return 0;
   const tierMult = getModuleTierInfo(count).mult;
@@ -772,6 +775,8 @@ function refreshRecipeDropdown() {
 
   if (GameState.unlockedRecipes.length > 1) {
     showEl("recipe-box");
+  } else {
+    hideEl("recipe-box");
   }
 
   const safeRecipes = typeof RECIPES !== "undefined" ? RECIPES : {};
@@ -826,7 +831,6 @@ function renderPlinkoBoard() {
   }
   lines.push(" " + topRow.join("") + " ");
 
-  // Spaced-out peg rows inside wide walls
   for (let r = 1; r < PLINKO_ROWS; r++) {
     let rowChars = Array(PLINKO_COLS).fill(" ");
     for (let c = 2; c < PLINKO_COLS - 2; c++) {
@@ -840,7 +844,6 @@ function renderPlinkoBoard() {
     lines.push("|" + rowChars.join("") + "|");
   }
 
-  // Wide outer burnt [X] zones inside walls, [🌾] inner, [★] exact center col 9
   lines.push("|[X]  [🌾] [★] [🌾]  [X]|");
   boardEl.textContent = lines.join("\n");
 }
@@ -866,19 +869,16 @@ function dropPlinkoPretzel() {
 
 function resolvePlinkoBucket(finalCol) {
   if (finalCol === 9) {
-    // Exact center col 9: rare 30s Golden Rush jackpot!
     GameState.goldenRushEndTime = Date.now() + 30000;
     setText("plinko-feedback", "RARE JACKPOT [★]! 30s GOLDEN RUSH!");
     logMessage("GOLDEN RUSH! 2x Cash & rare Golden Pretzels for 30s!");
     spawnFallingGoldenPretzel();
   } else if ((finalCol >= 5 && finalCol <= 8) || (finalCol >= 10 && finalCol <= 13)) {
-    // Inner buckets: Free Dough!
     const freeDough = Math.max(250, Math.round((GameState.doughBatchSize || 500) * 0.5));
     GameState.dough += freeDough;
     setText("plinko-feedback", `LANDED IN [🌾]: Won +${freeDough.toLocaleString()} lbs Dough!`);
     logMessage(`Plinko Winner! Won +${freeDough.toLocaleString()} lbs of fresh dough.`);
   } else {
-    // Wide outer buckets (cols 0..4 and 14..18): Burnt pretzel (most common)
     setText("plinko-feedback", "LANDED IN [X]: Burnt pretzel! Nothing won.");
     logMessage("Plinko: Pretzel landed in the burnt [X] slot.");
   }
@@ -983,6 +983,32 @@ function initSetupPicker() {
   }
 }
 
+function resetRegionalPanelsUI() {
+  pendingSales = 0;
+  cashFlowHistory = [];
+  liveCashPerSec = 0;
+  plinkoBall = null;
+
+  document.body.classList.remove("golden-rush-active");
+  hideEl("golden-rush-badge");
+  hideEl("income-rate-line");
+  hideEl("recipe-box");
+  hideEl("btn-toggle-autodough");
+  hideEl("panel-hand-dough");
+  hideEl("panel-automation");
+  hideEl("system-supply-chain");
+  hideEl("system-delivery");
+  hideEl("panel-trucks");
+  hideEl("panel-drones");
+  hideEl("panel-projects");
+  hideEl("rp-badge");
+  hideEl("panel-minigame");
+  hideEl("panel-plinko");
+
+  const projectsList = document.getElementById("projects-list");
+  if (projectsList) projectsList.innerHTML = "";
+}
+
 function applySessionUI() {
   setText("display-player-name", GameState.playerName);
   setText("ascii-stage", getEvolvedAscii());
@@ -1057,8 +1083,9 @@ function bindControls() {
       const refund = getSaltMineSellValue();
       GameState.saltMines -= 1;
       GameState.funds += refund;
+      const baseCost = Math.round(2500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.saltMineCost = GameState.saltMines === 0
-        ? 2500.00
+        ? baseCost
         : Math.round((GameState.saltMineCost / 1.45) * 100) / 100;
       logMessage(`Sold 1 Rock Salt Mine for +$${refund.toFixed(2)}.`);
       GameState.save();
@@ -1086,8 +1113,9 @@ function bindControls() {
       const refund = getWheatFarmSellValue();
       GameState.wheatFarms -= 1;
       GameState.funds += refund;
+      const baseCost = Math.round(4000.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.wheatFarmCost = GameState.wheatFarms === 0
-        ? 4000.00
+        ? baseCost
         : Math.round((GameState.wheatFarmCost / 1.45) * 100) / 100;
       logMessage(`Sold 1 Winter Wheat Field for +$${refund.toFixed(2)}.`);
       GameState.save();
@@ -1115,8 +1143,9 @@ function bindControls() {
       const refund = getRefinerySellValue();
       GameState.refineries -= 1;
       GameState.funds += refund;
+      const baseCost = Math.round(8500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.refineryCost = GameState.refineries === 0
-        ? 8500.00
+        ? baseCost
         : Math.round((GameState.refineryCost / 1.50) * 100) / 100;
       logMessage(`Sold 1 Dough Refinery for +$${refund.toFixed(2)}.`);
       GameState.save();
@@ -1146,6 +1175,19 @@ function bindControls() {
     hideEl("achievements-modal");
   });
 
+  onClick("btn-expand-continent", () => {
+    if (typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent()) {
+      const earnedGold = GameState.expandToNextContinent();
+      const newCont = GameState.getCurrentContinent();
+      resetRegionalPanelsUI();
+      updateDemand();
+      applySessionUI();
+      hideEl("achievements-modal");
+      logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!`);
+      render();
+    }
+  });
+
   onClick("player-badge", () => {
     showEl("restart-modal");
   });
@@ -1169,30 +1211,8 @@ function bindControls() {
     if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
       GameState.reset();
     }
-    pendingSales = 0;
-    cashFlowHistory = [];
-    liveCashPerSec = 0;
-    plinkoBall = null;
-
-    document.body.classList.remove("golden-rush-active");
-    hideEl("golden-rush-badge");
+    resetRegionalPanelsUI();
     hideEl("restart-modal");
-    hideEl("income-rate-line");
-    hideEl("recipe-box");
-    hideEl("btn-toggle-autodough");
-    hideEl("panel-hand-dough");
-    hideEl("panel-automation");
-    hideEl("system-supply-chain");
-    hideEl("system-delivery");
-    hideEl("panel-trucks");
-    hideEl("panel-drones");
-    hideEl("panel-projects");
-    hideEl("rp-badge");
-    hideEl("panel-minigame");
-    hideEl("panel-plinko");
-
-    const projectsList = document.getElementById("projects-list");
-    if (projectsList) projectsList.innerHTML = "";
 
     const nameInput = document.getElementById("input-player-name");
     if (nameInput) nameInput.value = "";
@@ -1285,8 +1305,9 @@ function bindControls() {
       const refund = getTruckSellValue();
       GameState.trucks -= 1;
       GameState.funds += refund;
+      const baseCost = Math.round(250.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.truckCost = GameState.trucks === 0
-        ? 250.00
+        ? baseCost
         : Math.round((GameState.truckCost / 1.48) * 100) / 100;
       logMessage(`Sold 1 Delivery Truck for +$${refund.toFixed(2)}.`);
       GameState.save();
@@ -1314,8 +1335,9 @@ function bindControls() {
       const refund = getDroneSellValue();
       GameState.drones -= 1;
       GameState.funds += refund;
+      const baseCost = Math.round(5000.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.droneCost = GameState.drones === 0
-        ? 5000.00
+        ? baseCost
         : Math.round((GameState.droneCost / 1.55) * 100) / 100;
       logMessage(`Sold 1 Pretzel Drone for +$${refund.toFixed(2)}.`);
       GameState.save();
@@ -1336,15 +1358,23 @@ function bindControls() {
 }
 
 function canAffordProject(proj) {
-  const hasCash = GameState.funds >= (proj.cashCost || 0);
+  const scale = typeof GameState.getCurrentContinent === "function" ? GameState.getCurrentContinent().costScale : 1;
+  const scaledCash = Math.round((proj.cashCost || 0) * scale * 100) / 100;
+  const hasCash = GameState.funds >= scaledCash;
   const hasRP = GameState.researchPoints >= (proj.rpCost || 0);
   return hasCash && hasRP;
 }
 
+function getScaledProjectCash(proj) {
+  const scale = typeof GameState.getCurrentContinent === "function" ? GameState.getCurrentContinent().costScale : 1;
+  return Math.round((proj.cashCost || 0) * scale * 100) / 100;
+}
+
 function formatProjectCost(proj) {
   const parts = [];
-  if (proj.cashCost > 0) {
-    parts.push(`$${proj.cashCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
+  const scaledCash = getScaledProjectCash(proj);
+  if (scaledCash > 0) {
+    parts.push(`$${scaledCash.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
   }
   if (proj.rpCost > 0) {
     parts.push(`${proj.rpCost} RP`);
@@ -1381,7 +1411,8 @@ function checkUnlocks() {
 
         onClick(`btn-${proj.id}`, () => {
           if (canAffordProject(proj)) {
-            if (proj.cashCost > 0) GameState.funds -= proj.cashCost;
+            const scaledCash = getScaledProjectCash(proj);
+            if (scaledCash > 0) GameState.funds -= scaledCash;
             if (proj.rpCost > 0) GameState.researchPoints -= proj.rpCost;
             GameState.completedProjects.push(proj.id);
             proj.effect();
@@ -1404,6 +1435,20 @@ function render() {
   const saltTier = applyModuleTierUI("module-salt-mine", "salt-mine-tier-badge", "salt-mine-next", GameState.saltMines);
   const wheatTier = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms);
   const refineryTier = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries);
+
+  // Header Continent & Golden Pretzel Pills
+  if (typeof GameState.getCurrentContinent === "function") {
+    const cont = GameState.getCurrentContinent();
+    setText("header-continent-name", cont.name);
+    const goldCount = GameState.goldenPretzels || 0;
+    if (goldCount > 0) {
+      showEl("header-gold-pill");
+      setText("header-gold-count", goldCount.toLocaleString());
+      setText("header-gold-bonus", `+${goldCount * 25}%`);
+    } else {
+      hideEl("header-gold-pill");
+    }
+  }
 
   const bakeRate = getEffectiveBakeRate();
   const maxDelivery = getEffectiveMaxDelivery();
@@ -1622,7 +1667,6 @@ function animateMinigames(timestamp) {
           plinkoStepTimer = 0;
           plinkoBall.row += 1;
 
-          // Outward bounce bias pushes balls toward outer burnt [X] zones; exact col 9 [★] is rare
           let leftChance = 0.5;
           if (plinkoBall.col >= 7 && plinkoBall.col <= 8) leftChance = 0.72;
           else if (plinkoBall.col >= 10 && plinkoBall.col <= 11) leftChance = 0.28;

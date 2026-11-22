@@ -121,9 +121,12 @@ const AchievementManager = {
 
   getDominancePercent() {
     if (typeof GameState === "undefined") return 0;
-    // Weighted regional dominance toward New Store / Continent Conquest ($50M + 10M pretzels + R&D + Supply Chain)
-    const pretzelProg = Math.min(1, (GameState.pretzels || 0) / 10000000);
-    const fundsProg = Math.min(1, (GameState.funds || 0) / 50000000);
+    const cont = typeof GameState.getCurrentContinent === "function"
+      ? GameState.getCurrentContinent()
+      : { cashReq: 50000000, pretzelReq: 10000000 };
+
+    const pretzelProg = Math.min(1, (GameState.pretzels || 0) / cont.pretzelReq);
+    const fundsProg = Math.min(1, (GameState.funds || 0) / cont.cashReq);
     const totalProjects = (typeof Projects !== "undefined" && Projects.length > 0) ? Projects.length : 31;
     const researchProg = Math.min(1, (GameState.completedProjects?.length || 0) / totalProjects);
     const supplyUnits = (GameState.saltMines || 0) + (GameState.wheatFarms || 0) + (GameState.refineries || 0);
@@ -131,6 +134,14 @@ const AchievementManager = {
 
     const weighted = (pretzelProg * 0.35) + (fundsProg * 0.35) + (researchProg * 0.15) + (supplyProg * 0.15);
     return Math.min(100, Math.round(weighted * 100));
+  },
+
+  canExpandContinent() {
+    if (typeof GameState === "undefined" || typeof GameState.getCurrentContinent !== "function") return false;
+    const cont = GameState.getCurrentContinent();
+    return this.getDominancePercent() >= 100
+      && (GameState.funds || 0) >= cont.cashReq
+      && (GameState.pretzels || 0) >= cont.pretzelReq;
   },
 
   playDing() {
@@ -236,14 +247,48 @@ const AchievementManager = {
     const unlockedCount = this.getUnlockedIds().length;
     const achPct = this.getAchievementPercent();
     const domPct = this.getDominancePercent();
+    const readyExpand = this.canExpandContinent();
+
+    const goldCount = GameState.goldenPretzels || 0;
+    const goldBonusPct = goldCount * 25;
+    const totalBonusPct = unlockedCount + goldBonusPct;
 
     const topDomEl = document.getElementById("top-dom-pct");
     const topAchEl = document.getElementById("top-ach-pct");
+    const topBtn = document.getElementById("btn-open-achievements");
     const bonusEl = document.getElementById("ach-bonus-pct");
 
     if (topDomEl) topDomEl.textContent = `${domPct}%`;
     if (topAchEl) topAchEl.textContent = `${achPct}%`;
-    if (bonusEl) bonusEl.textContent = `+${unlockedCount}%`;
+    if (topBtn) topBtn.classList.toggle("ready-to-expand", readyExpand);
+    if (bonusEl) bonusEl.textContent = `+${totalBonusPct}%`;
+
+    // Conquest Card UI inside Modal
+    if (typeof GameState.getCurrentContinent === "function") {
+      const cont = GameState.getCurrentContinent();
+      const nextName = GameState.getNextContinentName();
+      const stepNum = Math.min(7, (GameState.continentIndex || 0) + 1);
+      const pendingGold = GameState.calculatePendingGoldenPretzels();
+
+      const stepEl = document.getElementById("modal-continent-step");
+      const nameEl = document.getElementById("modal-continent-name");
+      const goldEl = document.getElementById("modal-gold-pretzels");
+      const goldBonusEl = document.getElementById("modal-gold-bonus");
+      const reqEl = document.getElementById("modal-conquest-reqs");
+      const btnExpand = document.getElementById("btn-expand-continent");
+
+      if (stepEl) stepEl.textContent = (GameState.continentIndex || 0) < 7 ? `${stepNum}/7` : `LOOP ${(GameState.continentIndex || 0) - 5}`;
+      if (nameEl) nameEl.textContent = `[🌎] ${cont.name}`;
+      if (goldEl) goldEl.textContent = goldCount.toLocaleString();
+      if (goldBonusEl) goldBonusEl.textContent = `+${goldBonusPct}%`;
+      if (reqEl) {
+        reqEl.innerHTML = `Requirements to expand to <strong>${nextName}</strong>: 100% Dominance, <strong>$${cont.cashReq.toLocaleString()}</strong> Cash &amp; <strong>${cont.pretzelReq.toLocaleString()}</strong> Pretzels.`;
+      }
+      if (btnExpand) {
+        btnExpand.disabled = !readyExpand;
+        btnExpand.textContent = `Expand to ${nextName} (+${pendingGold} [🥨★])`;
+      }
+    }
 
     const modalDomPct = document.getElementById("modal-dom-pct");
     const modalDomFill = document.getElementById("modal-dom-fill");

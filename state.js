@@ -1,6 +1,16 @@
 const SAVE_KEY = "petes_pretzels_save_v4";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
 
+const CONTINENTS = [
+  { id: "na", name: "North America", cashReq: 50000000, pretzelReq: 10000000, costScale: 1.0, baseReward: 4 },
+  { id: "sa", name: "South America", cashReq: 100000000, pretzelReq: 25000000, costScale: 1.6, baseReward: 6 },
+  { id: "eu", name: "Europe", cashReq: 200000000, pretzelReq: 60000000, costScale: 2.5, baseReward: 9 },
+  { id: "af", name: "Africa", cashReq: 400000000, pretzelReq: 150000000, costScale: 4.0, baseReward: 13 },
+  { id: "as", name: "Asia", cashReq: 800000000, pretzelReq: 400000000, costScale: 6.5, baseReward: 18 },
+  { id: "oc", name: "Oceania", cashReq: 1600000000, pretzelReq: 1000000000, costScale: 10.0, baseReward: 25 },
+  { id: "an", name: "Antarctica", cashReq: 3200000000, pretzelReq: 2500000000, costScale: 16.0, baseReward: 35 }
+];
+
 const RECIPES = {
   classic: {
     id: "classic",
@@ -33,6 +43,11 @@ const DEFAULT_STATE = {
   playerName: "",
   selectedAsciiIndex: 0,
   lastTick: Date.now(),
+
+  // Global Conquest Prestige
+  continentIndex: 0,
+  goldenPretzels: 0,
+  lifetimePretzelsAllRuns: 0,
 
   pretzels: 0,
   inventory: 0,
@@ -98,6 +113,42 @@ const DEFAULT_STATE = {
 const GameState = {
   ...JSON.parse(JSON.stringify(DEFAULT_STATE)),
 
+  getCurrentContinent() {
+    const idx = Math.max(0, this.continentIndex || 0);
+    if (idx < CONTINENTS.length) {
+      return CONTINENTS[idx];
+    }
+    const extraLoops = idx - CONTINENTS.length + 1;
+    const base = CONTINENTS[CONTINENTS.length - 1];
+    const loopMult = Math.pow(2.5, extraLoops);
+    return {
+      id: `global_${extraLoops}`,
+      name: `Global Franchise +${extraLoops}`,
+      cashReq: Math.round(base.cashReq * loopMult),
+      pretzelReq: Math.round(base.pretzelReq * loopMult),
+      costScale: Math.round(base.costScale * Math.pow(1.6, extraLoops) * 10) / 10,
+      baseReward: base.baseReward + (extraLoops * 12)
+    };
+  },
+
+  getNextContinentName() {
+    const nextIdx = (this.continentIndex || 0) + 1;
+    if (nextIdx < CONTINENTS.length) return CONTINENTS[nextIdx].name;
+    const extraLoops = nextIdx - CONTINENTS.length + 1;
+    return `Global Franchise +${extraLoops}`;
+  },
+
+  getGoldenPretzelMultiplier() {
+    return 1 + ((this.goldenPretzels || 0) * 0.25);
+  },
+
+  calculatePendingGoldenPretzels() {
+    const cont = this.getCurrentContinent();
+    const cashBonus = Math.floor(Math.max(0, (this.funds || 0) - cont.cashReq) / cont.cashReq) * 2;
+    const pretzelBonus = Math.floor(Math.max(0, (this.pretzels || 0) - cont.pretzelReq) / cont.pretzelReq) * 2;
+    return cont.baseReward + cashBonus + pretzelBonus;
+  },
+
   getBakeRate() {
     if (this.dough <= 0) return 0;
     return this.extruders * this.extruderSpeed;
@@ -115,8 +166,42 @@ const GameState = {
     const recipe = RECIPES[this.activeRecipe] || RECIPES.classic;
     const baseNet = (this.price * recipe.priceMult) + this.dipBonus;
     const achBonus = 1 + ((this.unlockedAchievements?.length || 0) * 0.01);
+    const goldBonus = this.getGoldenPretzelMultiplier();
     const rushMult = this.isGoldenRushActive() ? 2.0 : 1.0;
-    return Math.round(baseNet * achBonus * rushMult * 100) / 100;
+    return Math.round(baseNet * achBonus * goldBonus * rushMult * 100) / 100;
+  },
+
+  expandToNextContinent() {
+    const earnedGold = this.calculatePendingGoldenPretzels();
+    const preservedName = this.playerName;
+    const preservedAscii = this.selectedAsciiIndex;
+    const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
+    const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
+    const nextContinentIdx = (this.continentIndex || 0) + 1;
+    const totalGold = (this.goldenPretzels || 0) + earnedGold;
+
+    Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+
+    this.started = true;
+    this.playerName = preservedName;
+    this.selectedAsciiIndex = preservedAscii;
+    this.unlockedAchievements = preservedAchievements;
+    this.lifetimePretzelsAllRuns = totalLifetime;
+    this.continentIndex = nextContinentIdx;
+    this.goldenPretzels = totalGold;
+
+    const scale = this.getCurrentContinent().costScale;
+    this.doughCost = Math.round(12.00 * scale * 100) / 100;
+    this.promoCost = Math.round(50.00 * scale * 100) / 100;
+    this.extruderCost = Math.round(15.00 * scale * 100) / 100;
+    this.truckCost = Math.round(250.00 * scale * 100) / 100;
+    this.droneCost = Math.round(5000.00 * scale * 100) / 100;
+    this.saltMineCost = Math.round(2500.00 * scale * 100) / 100;
+    this.wheatFarmCost = Math.round(4000.00 * scale * 100) / 100;
+    this.refineryCost = Math.round(8500.00 * scale * 100) / 100;
+
+    this.save();
+    return earnedGold;
   },
 
   save() {

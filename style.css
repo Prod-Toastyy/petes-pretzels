@@ -170,6 +170,13 @@ p {
   border-color: #e8b448;
 }
 
+.top-ach-btn.ready-to-expand {
+  border-color: #ffd166;
+  background: #382c12;
+  color: #ffe8a3;
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.45);
+}
+
 .player-badge-btn {
   width: auto;
   margin: 0;
@@ -210,6 +217,31 @@ header {
 header h1 {
   margin: 0;
   font-size: 24px;
+}
+
+.header-territory-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.territory-pill {
+  background: var(--bg-well);
+  border: 1px solid var(--border-btn);
+  color: var(--text-heading);
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border-radius: 6px;
+}
+
+.gold-pill {
+  background: #332712;
+  border: 1px solid #ffd166;
+  color: #ffe8a3;
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border-radius: 6px;
 }
 
 #ascii-stage {
@@ -567,7 +599,62 @@ button:disabled {
   border-color: var(--border-module);
 }
 
-/* Dual Progress Bars & Achievements Grid */
+/* Conquest Card, Dual Progress Bars & Achievements Grid */
+.conquest-card {
+  background: linear-gradient(135deg, var(--bg-well), #2b2216);
+  border: 1px solid #c9973e;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.conquest-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.conquest-kicker {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.conquest-top h3 {
+  margin: 2px 0 0 0;
+  font-size: 18px;
+  color: #ffe8a3;
+}
+
+.gold-pretzel-pill {
+  background: #382c12;
+  border: 1px solid #ffd166;
+  color: #ffe8a3;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.expand-btn {
+  margin-top: 10px;
+  margin-bottom: 0;
+  background: #c9973e;
+  border-color: #ffd166;
+  color: #1a140c;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+
+.expand-btn:hover:not(:disabled) {
+  background: #ffd166;
+  border-color: #fff2b2;
+  color: #1a140c;
+}
+
 .progress-hub-bars {
   display: flex;
   flex-direction: column;
