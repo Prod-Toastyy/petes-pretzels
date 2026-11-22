@@ -1354,27 +1354,40 @@ let plinkoDropperDir = 1;
 let plinkoBall = null;
 let plinkoStepTimer = 0;
 
-function bindHoldButton(id, actionFn) {
+function bindHoldButton(id, actionFn, options = {}) {
   const btn = getEl(id);
   if (!btn) return;
 
+  const initialDelay = options.initialDelay ?? 240;
+  const repeatMs = options.repeatMs ?? 45;
+  const onRelease = options.onRelease ?? null;
+
   let holdDelayTimer = null;
   let repeatInterval = null;
+  let holdStartTime = 0;
 
   const stopHold = () => {
+    const wasHolding = Boolean(holdDelayTimer || repeatInterval);
     clearTimeout(holdDelayTimer);
     clearInterval(repeatInterval);
     holdDelayTimer = null;
     repeatInterval = null;
+    if (wasHolding && typeof onRelease === "function") {
+      onRelease();
+    }
   };
 
   const startHold = (e) => {
     if (e.type === "mousedown" && e.button !== 0) return;
     stopHold();
-    actionFn();
+    holdStartTime = Date.now();
+    actionFn(0);
     holdDelayTimer = setTimeout(() => {
-      repeatInterval = setInterval(actionFn, 60);
-    }, 280);
+      repeatInterval = setInterval(() => {
+        const heldSecs = (Date.now() - holdStartTime) / 1000;
+        actionFn(heldSecs);
+      }, repeatMs);
+    }, initialDelay);
   };
 
   btn.addEventListener("mousedown", startHold);
@@ -1387,6 +1400,14 @@ function bindHoldButton(id, actionFn) {
   btn.addEventListener("mouseleave", stopHold);
   btn.addEventListener("touchend", stopHold);
   btn.addEventListener("touchcancel", stopHold);
+}
+
+function getExponentialPriceStep(heldSecs, currentPrice) {
+  if (heldSecs <= 0.15) return 0.05;
+  const expMultiplier = Math.pow(1.45, Math.min(heldSecs * 4.2, 24));
+  const priceScale = Math.max(1, currentPrice * 0.04);
+  const rawStep = 0.05 * expMultiplier * (1 + priceScale * 0.25);
+  return Math.max(0.05, Math.round(rawStep * 100) / 100);
 }
 
 function logMessage(msg) {
@@ -1627,6 +1648,115 @@ function buyDoughBatch(isAuto = false) {
     return true;
   }
   return false;
+}
+
+function buySaltMineStep() {
+  if (GameState.funds < GameState.saltMineCost) return false;
+  const prevTier = getModuleTierInfo(GameState.saltMines).tier;
+  GameState.funds -= GameState.saltMineCost;
+  GameState.saltMines += 1;
+  GameState.saltMineCost = Math.round(GameState.saltMineCost * 1.45 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.saltMines);
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
+    if (GameState.saltMines === 25) triggerLevel25Juice("module-salt-mine");
+  }
+  render();
+  return true;
+}
+
+function buyWheatFarmStep() {
+  if (GameState.funds < GameState.wheatFarmCost) return false;
+  const prevTier = getModuleTierInfo(GameState.wheatFarms).tier;
+  GameState.funds -= GameState.wheatFarmCost;
+  GameState.wheatFarms += 1;
+  GameState.wheatFarmCost = Math.round(GameState.wheatFarmCost * 1.45 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
+    if (GameState.wheatFarms === 25) triggerLevel25Juice("module-wheat-farm");
+  }
+  render();
+  return true;
+}
+
+function buyRefineryStep() {
+  if (GameState.funds < GameState.refineryCost) return false;
+  const prevTier = getModuleTierInfo(GameState.refineries).tier;
+  GameState.funds -= GameState.refineryCost;
+  GameState.refineries += 1;
+  GameState.refineryCost = Math.round(GameState.refineryCost * 1.50 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.refineries);
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
+    if (GameState.refineries === 25) triggerLevel25Juice("module-refinery");
+  }
+  showEl("refinery-rate-wrap");
+  render();
+  return true;
+}
+
+function buyPromoStep() {
+  if (GameState.funds < GameState.promoCost) return false;
+  const prevTier = getModuleTierInfo(GameState.promoLevel).tier;
+  GameState.funds -= GameState.promoCost;
+  GameState.promoLevel += 1;
+  GameState.promoCost = Math.round(GameState.promoCost * 1.75 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.promoLevel);
+  updateDemand();
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Marketing reached ${newTierInfo.label} Demand!`);
+    if (GameState.promoLevel === 25) triggerLevel25Juice("module-promo");
+  } else {
+    logMessage(`Marketing upgraded to Level ${GameState.promoLevel}!`);
+  }
+  render();
+  return true;
+}
+
+function buyExtruderStep() {
+  if (GameState.funds < GameState.extruderCost) return false;
+  const prevTier = getModuleTierInfo(GameState.extruders).tier;
+  GameState.funds -= GameState.extruderCost;
+  GameState.extruders += 1;
+  GameState.extruderCost = Math.round(GameState.extruderCost * 1.42 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.extruders);
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
+    if (GameState.extruders === 25) triggerLevel25Juice("panel-automation");
+  }
+  render();
+  return true;
+}
+
+function buyTruckStep() {
+  if (GameState.funds < GameState.truckCost) return false;
+  const prevTier = getModuleTierInfo(GameState.trucks).tier;
+  GameState.funds -= GameState.truckCost;
+  GameState.trucks += 1;
+  GameState.truckCost = Math.round(GameState.truckCost * 1.48 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.trucks);
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
+    if (GameState.trucks === 25) triggerLevel25Juice("panel-trucks");
+  }
+  render();
+  return true;
+}
+
+function buyDroneStep() {
+  if (GameState.funds < GameState.droneCost) return false;
+  const prevTier = getModuleTierInfo(GameState.drones).tier;
+  GameState.funds -= GameState.droneCost;
+  GameState.drones += 1;
+  GameState.droneCost = Math.round(GameState.droneCost * 1.55 * 100) / 100;
+  const newTierInfo = getModuleTierInfo(GameState.drones);
+  if (newTierInfo.tier > prevTier) {
+    logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
+    if (GameState.drones === 25) triggerLevel25Juice("panel-drones");
+  }
+  render();
+  return true;
 }
 
 function unlockRecipe(recipeId) {
@@ -2088,11 +2218,14 @@ function bindControls() {
     setText("cloud-menu-msg", "Signed out of cloud.");
   });
 
-  onClick("btn-buy-dough", () => {
+  bindHoldButton("btn-buy-dough", () => {
     if (buyDoughBatch(false)) {
-      GameState.save(true);
       render();
     }
+  }, {
+    initialDelay: 220,
+    repeatMs: 55,
+    onRelease: () => GameState.save(true)
   });
 
   onClick("btn-toggle-autodough", () => {
@@ -2106,20 +2239,12 @@ function bindControls() {
     render();
   });
 
-  onClick("btn-buy-salt-mine", () => {
-    if (GameState.funds >= GameState.saltMineCost) {
-      const prevTier = getModuleTierInfo(GameState.saltMines).tier;
-      GameState.funds -= GameState.saltMineCost;
-      GameState.saltMines += 1;
-      GameState.saltMineCost = Math.round(GameState.saltMineCost * 1.45 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.saltMines);
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
-        if (GameState.saltMines === 25) triggerLevel25Juice("module-salt-mine");
-      }
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-salt-mine", () => {
+    buySaltMineStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
   onClick("btn-sell-salt-mine", () => {
@@ -2137,20 +2262,12 @@ function bindControls() {
     }
   });
 
-  onClick("btn-buy-wheat-farm", () => {
-    if (GameState.funds >= GameState.wheatFarmCost) {
-      const prevTier = getModuleTierInfo(GameState.wheatFarms).tier;
-      GameState.funds -= GameState.wheatFarmCost;
-      GameState.wheatFarms += 1;
-      GameState.wheatFarmCost = Math.round(GameState.wheatFarmCost * 1.45 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
-        if (GameState.wheatFarms === 25) triggerLevel25Juice("module-wheat-farm");
-      }
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-wheat-farm", () => {
+    buyWheatFarmStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
   onClick("btn-sell-wheat-farm", () => {
@@ -2168,21 +2285,12 @@ function bindControls() {
     }
   });
 
-  onClick("btn-buy-refinery", () => {
-    if (GameState.funds >= GameState.refineryCost) {
-      const prevTier = getModuleTierInfo(GameState.refineries).tier;
-      GameState.funds -= GameState.refineryCost;
-      GameState.refineries += 1;
-      GameState.refineryCost = Math.round(GameState.refineryCost * 1.50 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.refineries);
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
-        if (GameState.refineries === 25) triggerLevel25Juice("module-refinery");
-      }
-      showEl("refinery-rate-wrap");
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-refinery", () => {
+    buyRefineryStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
   onClick("btn-sell-refinery", () => {
@@ -2277,23 +2385,12 @@ function bindControls() {
     });
   }
 
-  onClick("btn-buy-promo", () => {
-    if (GameState.funds >= GameState.promoCost) {
-      const prevTier = getModuleTierInfo(GameState.promoLevel).tier;
-      GameState.funds -= GameState.promoCost;
-      GameState.promoLevel += 1;
-      GameState.promoCost = Math.round(GameState.promoCost * 1.75 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.promoLevel);
-      updateDemand();
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Marketing reached ${newTierInfo.label} Demand!`);
-        if (GameState.promoLevel === 25) triggerLevel25Juice("module-promo");
-      } else {
-        logMessage(`Marketing upgraded to Level ${GameState.promoLevel}!`);
-      }
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-promo", () => {
+    buyPromoStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
   const recipeSelect = getEl("select-recipe");
@@ -2307,50 +2404,42 @@ function bindControls() {
     });
   }
 
-  bindHoldButton("btn-price-up", () => {
-    GameState.price = Math.round((GameState.price + 0.05) * 100) / 100;
+  bindHoldButton("btn-price-up", (heldSecs) => {
+    const step = getExponentialPriceStep(heldSecs, GameState.price);
+    GameState.price = Math.round((GameState.price + step) * 100) / 100;
     updateDemand();
     render();
+  }, {
+    initialDelay: 180,
+    repeatMs: 45
   });
 
-  bindHoldButton("btn-price-down", () => {
+  bindHoldButton("btn-price-down", (heldSecs) => {
     if (GameState.price > 0.05) {
-      GameState.price = Math.round((GameState.price - 0.05) * 100) / 100;
+      const step = getExponentialPriceStep(heldSecs, GameState.price);
+      GameState.price = Math.max(0.05, Math.round((GameState.price - step) * 100) / 100);
       updateDemand();
       render();
     }
+  }, {
+    initialDelay: 180,
+    repeatMs: 45
   });
 
-  onClick("btn-buy-extruder", () => {
-    if (GameState.funds >= GameState.extruderCost) {
-      const prevTier = getModuleTierInfo(GameState.extruders).tier;
-      GameState.funds -= GameState.extruderCost;
-      GameState.extruders += 1;
-      GameState.extruderCost = Math.round(GameState.extruderCost * 1.42 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.extruders);
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
-        if (GameState.extruders === 25) triggerLevel25Juice("panel-automation");
-      }
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-extruder", () => {
+    buyExtruderStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
-  onClick("btn-buy-truck", () => {
-    if (GameState.funds >= GameState.truckCost) {
-      const prevTier = getModuleTierInfo(GameState.trucks).tier;
-      GameState.funds -= GameState.truckCost;
-      GameState.trucks += 1;
-      GameState.truckCost = Math.round(GameState.truckCost * 1.48 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.trucks);
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
-        if (GameState.trucks === 25) triggerLevel25Juice("panel-trucks");
-      }
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-truck", () => {
+    buyTruckStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
   onClick("btn-sell-truck", () => {
@@ -2368,20 +2457,12 @@ function bindControls() {
     }
   });
 
-  onClick("btn-buy-drone", () => {
-    if (GameState.funds >= GameState.droneCost) {
-      const prevTier = getModuleTierInfo(GameState.drones).tier;
-      GameState.funds -= GameState.droneCost;
-      GameState.drones += 1;
-      GameState.droneCost = Math.round(GameState.droneCost * 1.55 * 100) / 100;
-      const newTierInfo = getModuleTierInfo(GameState.drones);
-      if (newTierInfo.tier > prevTier) {
-        logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
-        if (GameState.drones === 25) triggerLevel25Juice("panel-drones");
-      }
-      GameState.save(true);
-      render();
-    }
+  bindHoldButton("btn-buy-drone", () => {
+    buyDroneStep();
+  }, {
+    initialDelay: 220,
+    repeatMs: 45,
+    onRelease: () => GameState.save(true)
   });
 
   onClick("btn-sell-drone", () => {
