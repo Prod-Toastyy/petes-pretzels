@@ -44,6 +44,7 @@ const COLLAPSIBLE_SECTION_IDS = [
 const domCache = new Map();
 const lastTextCache = new Map();
 const lastPlinkoSignature = { value: "" };
+let lastThemeDropdownSignature = "";
 
 function getEl(id) {
   if (domCache.has(id)) {
@@ -205,11 +206,22 @@ function isThemeUnlocked(themeObj) {
   return unlockedTier >= themeObj.minContinent;
 }
 
-function refreshThemeDropdown() {
+function refreshThemeDropdown(force = false) {
   const select = getEl("select-theme");
   if (!select) return;
 
   const currentTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
+  const unlockSig = THEMES_CATALOG.map(t => (isThemeUnlocked(t) ? "1" : "0")).join("");
+  const signature = `${currentTheme}|${unlockSig}`;
+
+  if (!force && signature === lastThemeDropdownSignature && select.options.length === THEMES_CATALOG.length) {
+    if (select.value !== currentTheme) {
+      select.value = currentTheme;
+    }
+    return;
+  }
+
+  lastThemeDropdownSignature = signature;
   select.innerHTML = "";
 
   THEMES_CATALOG.forEach(t => {
@@ -234,7 +246,7 @@ function applyTheme(themeId) {
     document.body.classList.add(`theme-${safeTheme.id}`);
   }
   localStorage.setItem(THEME_STORAGE_KEY, safeTheme.id);
-  refreshThemeDropdown();
+  refreshThemeDropdown(true);
 }
 
 function refreshCloudMenuUI() {
@@ -362,7 +374,7 @@ async function applyCloudUserSave(user) {
     GameState.applySaveObject(cloudSave);
     sanitizeNumbers();
     updateDemand();
-    refreshThemeDropdown();
+    refreshThemeDropdown(true);
     applySessionUI();
     logMessage(`Cloud save loaded for ${GameState.playerName}.`);
     render();
@@ -1658,50 +1670,6 @@ function updateDemand() {
   GameState.demand = Math.max(1, Math.round(rawDemand));
 }
 
-function getDominanceForStage() {
-  if (typeof AchievementManager !== "undefined" && typeof AchievementManager.getDominancePercent === "function") {
-    return AchievementManager.getDominancePercent();
-  }
-  return 0;
-}
-
-function getEvolvedAscii() {
-  const gallery = getGallery();
-  const base = gallery[GameState.selectedAsciiIndex] || gallery[0];
-  const domPct = getDominanceForStage();
-  const sparkFrame = ["✦", "✧", "★", "·"][Math.floor(Date.now() / 350) % 4];
-
-  if (domPct >= 100) {
-    return `👑 ═══ KING OF PRETZELS ═══ 👑\n${sparkFrame} ${base} ${sparkFrame}\n👑 ════ 100% DOMINANCE ════ 👑`;
-  }
-  if (domPct >= 75) {
-    return `${sparkFrame} ─── ${domPct}% NEAR CROWN ─── ${sparkFrame}\n${base}\n✦ ─────────────────────── ✦`;
-  }
-  if (domPct >= 40) {
-    return `· ${sparkFrame} ── ${domPct}% CONQUEST ── ${sparkFrame} ·\n${base}`;
-  }
-  if (domPct >= 15) {
-    return `  ·  ${sparkFrame}  ·  \n${base}`;
-  }
-  return base;
-}
-
-function applyStageAnimationTier(domPct) {
-  const asciiEl = getEl("ascii-stage");
-  if (!asciiEl) return;
-
-  asciiEl.classList.remove("ascii-sway", "ascii-anim-tier-1", "ascii-anim-tier-2", "ascii-anim-tier-3", "ascii-anim-king");
-  if (domPct >= 100) {
-    asciiEl.classList.add("ascii-anim-king");
-  } else if (domPct >= 75) {
-    asciiEl.classList.add("ascii-anim-tier-3");
-  } else if (domPct >= 40) {
-    asciiEl.classList.add("ascii-anim-tier-2");
-  } else if (domPct >= 15) {
-    asciiEl.classList.add("ascii-anim-tier-1");
-  }
-}
-
 function getActiveRangeTargets() {
   const count = Math.max(1, Math.min(5, GameState.rangeTargetCount || 1));
   const targets = [];
@@ -1972,7 +1940,7 @@ function applySessionUI() {
   hideEl("title-intro-screen");
   hideEl("setup-modal");
 
-  refreshThemeDropdown();
+  refreshThemeDropdown(true);
   refreshRecipeDropdown();
   applySavedSectionCollapseStates();
   if (typeof AchievementManager !== "undefined") {
@@ -2258,7 +2226,7 @@ function bindControls() {
   onClick("btn-expand-continent", completeContinentExpansion);
 
   onClick("player-badge", () => {
-    refreshThemeDropdown();
+    refreshThemeDropdown(true);
     refreshCloudMenuUI();
     refreshPrestigeMenuUI();
     setText("cloud-menu-msg", "");
@@ -2520,8 +2488,6 @@ function checkUnlocks() {
 }
 
 function render() {
-  refreshThemeDropdown();
-
   const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
   const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
   const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
