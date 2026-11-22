@@ -309,8 +309,15 @@ const AchievementManager = {
 
     const pretzelProg = Math.min(1, (GameState.pretzels || 0) / cont.pretzelReq);
     const fundsProg = Math.min(1, (GameState.funds || 0) / cont.cashReq);
-    const totalProjects = (typeof Projects !== "undefined" && Projects.length > 0) ? Projects.length : 31;
-    const researchProg = Math.min(1, (GameState.completedProjects?.length || 0) / totalProjects);
+
+    const currentContIdx = GameState.continentIndex || 0;
+    const availableProjects = (typeof Projects !== "undefined" && Array.isArray(Projects))
+      ? Projects.filter(p => !p.minContinent || currentContIdx >= p.minContinent)
+      : [];
+    const totalProjects = availableProjects.length > 0 ? availableProjects.length : 1;
+    const completedAvailable = availableProjects.filter(p => (GameState.completedProjects || []).includes(p.id)).length;
+    const researchProg = Math.min(1, completedAvailable / totalProjects);
+
     const supplyUnits = (GameState.saltMines || 0) + (GameState.wheatFarms || 0) + (GameState.refineries || 0);
     const supplyProg = Math.min(1, supplyUnits / 30);
 
