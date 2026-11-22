@@ -2017,7 +2017,10 @@ function animateMinigames(timestamp) {
       }
 
       const ch = getEl("range-crosshair");
-      if (ch) ch.style.transform = `translateX(${(crosshairPos - 50) * 2}%)`;
+      if (ch) {
+        ch.style.left = `${crosshairPos}%`;
+        ch.style.transform = "translate(-50%, -50%)";
+      }
     }
 
     if (GameState.unlockedPlinko) {
