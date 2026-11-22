@@ -1402,12 +1402,10 @@ function bindHoldButton(id, actionFn, options = {}) {
   btn.addEventListener("touchcancel", stopHold);
 }
 
-function getExponentialPriceStep(heldSecs, currentPrice) {
+function getExponentialPriceStep(heldSecs) {
   if (heldSecs <= 0.15) return 0.05;
-  const expMultiplier = Math.pow(1.45, Math.min(heldSecs * 4.2, 24));
-  const priceScale = Math.max(1, currentPrice * 0.04);
-  const rawStep = 0.05 * expMultiplier * (1 + priceScale * 0.25);
-  return Math.max(0.05, Math.round(rawStep * 100) / 100);
+  const expStep = 0.05 * Math.pow(1.45, Math.min(heldSecs * 4.5, 16));
+  return Math.min(5.00, Math.round(expStep * 20) / 20);
 }
 
 function logMessage(msg) {
