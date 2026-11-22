@@ -7,22 +7,39 @@ const CloudSave = {
   isConfigured: false,
   syncInFlight: false,
 
+  hasValidCredentials() {
+    return Boolean(
+      SUPABASE_URL &&
+      !SUPABASE_URL.includes("YOUR_PROJECT_ID") &&
+      SUPABASE_ANON_KEY &&
+      !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY")
+    );
+  },
+
   init() {
-    if (
-      typeof window.supabase === "undefined" ||
-      !SUPABASE_URL ||
-      SUPABASE_URL.includes("YOUR_PROJECT_ID") ||
-      !SUPABASE_ANON_KEY ||
-      SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY")
-    ) {
+    if (!this.hasValidCredentials()) {
       this.isConfigured = false;
       this.setStatus("Cloud: Keys Not Set", "offline");
-      return;
+      return false;
     }
 
-    this.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    if (typeof window.supabase === "undefined" || typeof window.supabase.createClient !== "function") {
+      this.isConfigured = false;
+      this.setStatus("Cloud: SDK Blocked/Offline", "offline");
+      return false;
+    }
+
+    if (!this.client) {
+      this.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
     this.isConfigured = true;
     this.setStatus("Cloud: Ready", "online");
+    return true;
+  },
+
+  ensureReady() {
+    if (this.isConfigured && this.client) return true;
+    return this.init();
   },
 
   setStatus(text, stateClass = "") {
@@ -34,7 +51,7 @@ const CloudSave = {
   },
 
   async getSessionUser() {
-    if (!this.isConfigured || !this.client) return null;
+    if (!this.ensureReady()) return null;
     const { data, error } = await this.client.auth.getUser();
     if (error || !data?.user) {
       this.user = null;
@@ -45,7 +62,13 @@ const CloudSave = {
   },
 
   async signUp(email, password) {
-    if (!this.isConfigured) throw new Error("Add your Supabase URL & Anon Key in supabase.js first.");
+    if (!this.ensureReady()) {
+      throw new Error(
+        this.hasValidCredentials()
+          ? "Supabase script didn't load (check internet/VPN/ad-blocker for jsdelivr.net)."
+          : "Add your Supabase URL & Anon Key in supabase.js first."
+      );
+    }
     const { data, error } = await this.client.auth.signUp({ email, password });
     if (error) throw error;
     this.user = data.user;
@@ -53,7 +76,13 @@ const CloudSave = {
   },
 
   async signIn(email, password) {
-    if (!this.isConfigured) throw new Error("Add your Supabase URL & Anon Key in supabase.js first.");
+    if (!this.ensureReady()) {
+      throw new Error(
+        this.hasValidCredentials()
+          ? "Supabase script didn't load (check internet/VPN/ad-blocker for jsdelivr.net)."
+          : "Add your Supabase URL & Anon Key in supabase.js first."
+      );
+    }
     const { data, error } = await this.client.auth.signInWithPassword({ email, password });
     if (error) throw error;
     this.user = data.user;
@@ -61,14 +90,14 @@ const CloudSave = {
   },
 
   async signOut() {
-    if (!this.isConfigured || !this.client) return;
+    if (!this.ensureReady()) return;
     await this.client.auth.signOut();
     this.user = null;
     this.setStatus("Cloud: Signed Out", "offline");
   },
 
   async loadFromCloud() {
-    if (!this.isConfigured || !this.user) return null;
+    if (!this.ensureReady() || !this.user) return null;
     this.setStatus("Cloud: Loading...", "syncing");
 
     const { data, error } = await this.client
@@ -88,7 +117,7 @@ const CloudSave = {
   },
 
   async pushToCloud(snapshotObj) {
-    if (!this.isConfigured || !this.user || this.syncInFlight) return;
+    if (!this.ensureReady() || !this.user || this.syncInFlight) return;
     this.syncInFlight = true;
     this.setStatus("Cloud: Saving...", "syncing");
 
