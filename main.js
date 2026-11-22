@@ -66,15 +66,24 @@ function getModuleTierInfo(count) {
   return { tier: 0, label: "BASE • 1x", mult: 1.0, next: 10 };
 }
 
-function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "") {
+function getModuleAsciiStage(artKey, tierIndex) {
+  if (typeof ModuleAsciiStages === "undefined" || !ModuleAsciiStages[artKey]) return "";
+  const stages = ModuleAsciiStages[artKey];
+  return stages[Math.min(stages.length - 1, Math.max(0, tierIndex))] || stages[0];
+}
+
+function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "", asciiElId = null, artKey = null) {
   const info = getModuleTierInfo(count);
   const box = document.getElementById(boxId);
   if (box) {
     box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
     if (info.tier > 0) box.classList.add(`tier-${info.tier}`);
   }
-  setText(badgeId, info.label);
-  setText(nextId, info.next ? `Next: ${prefix}${info.next}` : "MAX TIER");
+  if (badgeId) setText(badgeId, info.label);
+  if (nextId) setText(nextId, info.next ? `Next: ${prefix}${info.next}` : "MAX TIER");
+  if (asciiElId && artKey) {
+    setText(asciiElId, getModuleAsciiStage(artKey, info.tier));
+  }
   return info;
 }
 
@@ -1480,14 +1489,15 @@ function checkUnlocks() {
 }
 
 function render() {
-  const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ");
-  const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders);
-  const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks);
-  const droneTier = applyModuleTierUI("panel-drones", "drone-tier-badge", "drone-next", GameState.drones);
+  // Evolving ASCII & Tier Styling strictly for the 7 Upgradeable Modules
+  const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
+  const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
+  const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
+  const droneTier = applyModuleTierUI("panel-drones", "drone-tier-badge", "drone-next", GameState.drones, "", "drone-ascii", "drone");
 
-  const saltTier = applyModuleTierUI("module-salt-mine", "salt-mine-tier-badge", "salt-mine-next", GameState.saltMines);
-  const wheatTier = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms);
-  const refineryTier = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries);
+  const saltTier = applyModuleTierUI("module-salt-mine", "salt-mine-tier-badge", "salt-mine-next", GameState.saltMines, "", "salt-mine-ascii", "saltMine");
+  const wheatTier = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms, "", "wheat-farm-ascii", "wheatFarm");
+  const refineryTier = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries, "", "refinery-ascii", "refinery");
 
   if (typeof GameState.getCurrentContinent === "function") {
     const cont = GameState.getCurrentContinent();
@@ -1679,7 +1689,6 @@ function animateMinigames(timestamp) {
   lastAnimTime = timestamp;
 
   if (GameState.started) {
-    // 1. Target Range Crosshair
     if (GameState.unlockedMinigame) {
       const speedPercentPerSec = 95;
       crosshairPos += crosshairDir * speedPercentPerSec * dt;
@@ -1696,7 +1705,6 @@ function animateMinigames(timestamp) {
       if (ch) ch.style.left = `${crosshairPos}%`;
     }
 
-    // 2. ASCII Plinko Dropper & Ball Physics (19 columns)
     if (GameState.unlockedPlinko) {
       if (!plinkoBall) {
         const dropperSpeedColsPerSec = 17;
@@ -1735,7 +1743,6 @@ function animateMinigames(timestamp) {
       }
     }
 
-    // 3. Rotate ASCII World Globe when modal is open
     const achModal = document.getElementById("achievements-modal");
     if (achModal && !achModal.classList.contains("hidden") && typeof renderSpinningGlobe === "function") {
       globeSpinTimer += dt;

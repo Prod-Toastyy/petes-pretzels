@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pete's Pretzels</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="[https://fonts.googleapis.com](https://fonts.googleapis.com)">
+  <link rel="preconnect" href="[https://fonts.gstatic.com](https://fonts.gstatic.com)" crossorigin>
+  <link href="[https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap](https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap)" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -221,18 +221,20 @@
 
         <div class="module-box" id="module-promo">
           <div class="module-head">
-            <p>[📣] Marketing: <strong>Lvl <span id="promo-level">1</span></strong></p>
+            <p>Marketing: <strong>Lvl <span id="promo-level">1</span></strong></p>
             <span id="promo-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="promo-ascii" class="module-ascii"></pre>
           <button id="btn-buy-promo">Promote Bakery ($<span id="promo-cost">50.00</span>)</button>
           <p class="subtext">+20% Demand/lvl (<span id="promo-bonus">+0%</span>) • <span id="promo-next">Next: Lvl 10</span></p>
         </div>
 
         <div class="module-box hidden" id="panel-automation">
           <div class="module-head">
-            <p><strong>[⚙️] Auto-Extruders: <span id="extruder-count">0</span></strong></p>
+            <p><strong>Auto-Extruders: <span id="extruder-count">0</span></strong></p>
             <span id="extruder-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="extruder-ascii" class="module-ascii"></pre>
           <button id="btn-buy-extruder">Buy Extruder ($<span id="extruder-cost">15.00</span>)</button>
           <p class="subtext">+<span id="extruder-rate">1</span>/sec each • <span id="extruder-next">Next: 10</span></p>
         </div>
@@ -253,9 +255,10 @@
 
         <div class="module-box" id="module-salt-mine">
           <div class="module-head">
-            <p><strong>[⛏️] Rock Salt Mines: <span id="salt-mine-count">0</span></strong></p>
+            <p><strong>Rock Salt Mines: <span id="salt-mine-count">0</span></strong></p>
             <span id="salt-mine-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="salt-mine-ascii" class="module-ascii"></pre>
           <div class="btn-row">
             <button id="btn-buy-salt-mine">Open ($<span id="salt-mine-cost">2,500.00</span>)</button>
             <button id="btn-sell-salt-mine" class="sell-btn" disabled>Sell (+$<span id="salt-mine-sell-val">0.00</span>)</button>
@@ -265,9 +268,10 @@
 
         <div class="module-box" id="module-wheat-farm">
           <div class="module-head">
-            <p><strong>[🌾] Winter Wheat Fields: <span id="wheat-farm-count">0</span></strong></p>
+            <p><strong>Winter Wheat Fields: <span id="wheat-farm-count">0</span></strong></p>
             <span id="wheat-farm-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="wheat-farm-ascii" class="module-ascii"></pre>
           <div class="btn-row">
             <button id="btn-buy-wheat-farm">Plant ($<span id="wheat-farm-cost">4,000.00</span>)</button>
             <button id="btn-sell-wheat-farm" class="sell-btn" disabled>Sell (+$<span id="wheat-farm-sell-val">0.00</span>)</button>
@@ -277,9 +281,10 @@
 
         <div class="module-box" id="module-refinery">
           <div class="module-head">
-            <p><strong>[🏭] Dough Refineries: <span id="refinery-count">0</span></strong></p>
+            <p><strong>Dough Refineries: <span id="refinery-count">0</span></strong></p>
             <span id="refinery-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="refinery-ascii" class="module-ascii"></pre>
           <div class="btn-row">
             <button id="btn-buy-refinery">Build ($<span id="refinery-cost">8,500.00</span>)</button>
             <button id="btn-sell-refinery" class="sell-btn" disabled>Sell (+$<span id="refinery-sell-val">0.00</span>)</button>
@@ -297,9 +302,10 @@
         
         <div class="module-box hidden" id="panel-trucks">
           <div class="module-head">
-            <p><strong>[🚚] Delivery Trucks: <span id="truck-count">0</span></strong></p>
+            <p><strong>Delivery Trucks: <span id="truck-count">0</span></strong></p>
             <span id="truck-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="truck-ascii" class="module-ascii"></pre>
           <div class="btn-row">
             <button id="btn-buy-truck">Buy ($<span id="truck-cost">250.00</span>)</button>
             <button id="btn-sell-truck" class="sell-btn" disabled>Sell (+$<span id="truck-sell-val">0.00</span>)</button>
@@ -309,9 +315,10 @@
 
         <div class="module-box hidden" id="panel-drones">
           <div class="module-head">
-            <p><strong>[🛸] Pretzel Drones: <span id="drone-count">0</span></strong></p>
+            <p><strong>Pretzel Drones: <span id="drone-count">0</span></strong></p>
             <span id="drone-tier-badge" class="tier-badge">BASE • 1x</span>
           </div>
+          <pre id="drone-ascii" class="module-ascii"></pre>
           <div class="btn-row">
             <button id="btn-buy-drone">Buy ($<span id="drone-cost">5000.00</span>)</button>
             <button id="btn-sell-drone" class="sell-btn" disabled>Sell (+$<span id="drone-sell-val">0.00</span>)</button>
