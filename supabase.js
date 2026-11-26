@@ -68,7 +68,14 @@ const CloudSave = {
 
     if (typeof window.supabase !== "undefined" && typeof window.supabase.createClient === "function") {
       if (!this.client) {
-        this.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        this.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false,
+            storageKey: "petes_pretzels_cloud_auth_v1"
+          }
+        });
       }
       this.isConfigured = true;
       this.setStatus(this.user ? "Cloud: Synced" : "Cloud: Ready", "online");

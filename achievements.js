@@ -197,7 +197,10 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
+const LEADERBOARD_VERSION = "BETA.10";
 const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
+const LEADERBOARD_MAX_ROWS = 10;
+const LEADERBOARD_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 const GLOBE_MAP = [
   "..............................",
@@ -217,6 +220,7 @@ let globeSpinOffset = 0;
 let activeLeaderboardMode = "pretzels";
 let liveLeaderboardRows = [];
 let leaderboardFetching = false;
+let lastLeaderboardSyncByMode = { pretzels: 0, time: 0 };
 let cachedAnonLeaderboardClient = null;
 
 function getLeaderboardClient() {
@@ -253,7 +257,9 @@ function recordCurrentShopSnapshot() {
   const pretzelsAllRuns = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
     ? Math.floor(GameState.getTotalLifetimePretzelsAllRuns())
     : Math.floor((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
-  const bestWinSeconds = (GameState.bestRunSeconds || 0) > 0
+
+  const hasCompletedFullRun = Boolean(GameState.completedFullRun);
+  const bestWinSeconds = (hasCompletedFullRun && (GameState.bestRunSeconds || 0) > 0)
     ? Math.floor(GameState.bestRunSeconds)
     : null;
 
@@ -266,21 +272,23 @@ function recordCurrentShopSnapshot() {
       shopKey: slug,
       shopName,
       pretzelsAllRuns: Math.max(Number(prev.pretzelsAllRuns) || 0, pretzelsAllRuns),
-      bestWinSeconds: (Number(prev.bestWinSeconds) > 0 && bestWinSeconds > 0)
+      completedFullRun: Boolean(prev.completedFullRun || hasCompletedFullRun),
+      bestWinSeconds: (hasCompletedFullRun && Number(prev.bestWinSeconds) > 0 && bestWinSeconds > 0)
         ? Math.min(Number(prev.bestWinSeconds), bestWinSeconds)
-        : (bestWinSeconds || (Number(prev.bestWinSeconds) > 0 ? Number(prev.bestWinSeconds) : null))
+        : (bestWinSeconds || null)
     };
   } else {
     shops.push({
       shopKey: slug,
       shopName,
       pretzelsAllRuns,
+      completedFullRun: hasCompletedFullRun,
       bestWinSeconds
     });
   }
 
   shops.sort((a, b) => (Number(b.pretzelsAllRuns) || 0) - (Number(a.pretzelsAllRuns) || 0));
-  const trimmed = shops.slice(0, 15);
+  const trimmed = shops.slice(0, LEADERBOARD_MAX_ROWS);
   try {
     localStorage.setItem(OLD_SHOPS_KEY, JSON.stringify(trimmed));
   } catch (e) {
@@ -357,37 +365,56 @@ function renderContinentStatusChips() {
   });
 }
 
-async function syncAndFetchLeaderboard() {
+async function syncAndFetchLeaderboard(force = false) {
   if (leaderboardFetching || typeof GameState === "undefined") return;
+
+  const now = Date.now();
+  const lastSync = lastLeaderboardSyncByMode[activeLeaderboardMode] || 0;
+  if (!force && now - lastSync < LEADERBOARD_SYNC_INTERVAL_MS) {
+    renderLeaderboard();
+    return;
+  }
+
   leaderboardFetching = true;
 
   try {
     const savedShops = recordCurrentShopSnapshot();
-    const client = getLeaderboardClient();
+    const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user) && Boolean(CloudSave.client);
 
-    if (client) {
-      for (const shop of savedShops) {
-        if ((shop.pretzelsAllRuns || 0) > 0 || (shop.bestWinSeconds || 0) > 0) {
-          const { error: upsertErr } = await client
-            .from("shop_leaderboard")
-            .upsert({
-              shop_key: shop.shopKey,
-              shop_name: shop.shopName,
-              pretzels_all_runs: Math.floor(shop.pretzelsAllRuns || 0),
-              best_win_seconds: shop.bestWinSeconds ? Math.floor(shop.bestWinSeconds) : null,
-              updated_at: new Date().toISOString()
-            }, { onConflict: "shop_key" });
-          if (upsertErr) console.error("Leaderboard upsert error:", upsertErr);
+    if (isSignedIn) {
+      const session = await CloudSave.refreshActiveSession();
+      if (session && session.user) {
+        for (const shop of savedShops) {
+          if ((shop.pretzelsAllRuns || 0) > 0 || (shop.completedFullRun && (shop.bestWinSeconds || 0) > 0)) {
+            const { error: upsertErr } = await CloudSave.client
+              .from("shop_leaderboard")
+              .upsert({
+                user_id: session.user.id,
+                shop_key: shop.shopKey,
+                shop_name: shop.shopName,
+                pretzels_all_runs: Math.floor(shop.pretzelsAllRuns || 0),
+                completed_full_run: Boolean(shop.completedFullRun),
+                best_win_seconds: (shop.completedFullRun && shop.bestWinSeconds) ? Math.floor(shop.bestWinSeconds) : null,
+                game_version: LEADERBOARD_VERSION,
+                updated_at: new Date().toISOString()
+              }, { onConflict: "user_id,shop_key" });
+            if (upsertErr) console.error("Leaderboard upsert error:", upsertErr);
+          }
         }
       }
+    }
 
+    const client = getLeaderboardClient();
+    if (client) {
       let query = client
         .from("shop_leaderboard")
-        .select("shop_key, shop_name, pretzels_all_runs, best_win_seconds")
-        .limit(100);
+        .select("user_id, shop_key, shop_name, pretzels_all_runs, best_win_seconds, completed_full_run")
+        .eq("game_version", LEADERBOARD_VERSION)
+        .limit(LEADERBOARD_MAX_ROWS);
 
       if (activeLeaderboardMode === "time") {
         query = query
+          .eq("completed_full_run", true)
           .not("best_win_seconds", "is", null)
           .gt("best_win_seconds", 0)
           .order("best_win_seconds", { ascending: true });
@@ -399,13 +426,16 @@ async function syncAndFetchLeaderboard() {
       if (error) {
         console.error("Leaderboard fetch error:", error);
       } else if (Array.isArray(data)) {
+        lastLeaderboardSyncByMode[activeLeaderboardMode] = Date.now();
+        const currentUserId = (typeof CloudSave !== "undefined" && CloudSave.user) ? CloudSave.user.id : null;
         const myKeys = new Set(savedShops.map(s => s.shopKey));
         liveLeaderboardRows = data.map(row => ({
           shopKey: row.shop_key || "",
           shopName: row.shop_name || "Unnamed Pretzel Shop",
           pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
-          bestWinSeconds: row.best_win_seconds ? Number(row.best_win_seconds) : null,
-          isUser: myKeys.has(row.shop_key)
+          completedFullRun: Boolean(row.completed_full_run),
+          bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
+          isUser: Boolean(currentUserId && row.user_id === currentUserId && myKeys.has(row.shop_key))
         }));
       }
     }
@@ -422,50 +452,70 @@ function renderLeaderboard() {
   if (!listEl || typeof GameState === "undefined") return;
 
   const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
-  const savedShops = recordCurrentShopSnapshot();
+  const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user);
+  const savedShops = isSignedIn ? recordCurrentShopSnapshot() : [];
 
   const byKey = new Map();
 
   for (const row of liveLeaderboardRows) {
-    const k = row.shopKey || row.shopName;
+    const k = `${row.shopKey || row.shopName}:${row.isUser ? "me" : "other"}`;
     byKey.set(k, { ...row });
   }
 
-  for (const shop of savedShops) {
-    const existing = byKey.get(shop.shopKey);
-    if (!existing) {
-      byKey.set(shop.shopKey, { ...shop, isUser: true });
-    } else {
-      byKey.set(shop.shopKey, {
-        ...existing,
-        pretzelsAllRuns: Math.max(Number(existing.pretzelsAllRuns) || 0, Number(shop.pretzelsAllRuns) || 0),
-        bestWinSeconds: (Number(existing.bestWinSeconds) > 0 && Number(shop.bestWinSeconds) > 0)
-          ? Math.min(Number(existing.bestWinSeconds), Number(shop.bestWinSeconds))
-          : (Number(shop.bestWinSeconds) > 0 ? Number(shop.bestWinSeconds) : (Number(existing.bestWinSeconds) > 0 ? Number(existing.bestWinSeconds) : null)),
-        isUser: true
-      });
+  if (isSignedIn) {
+    for (const shop of savedShops) {
+      const k = `${shop.shopKey}:me`;
+      const existing = byKey.get(k);
+      if (!existing) {
+        byKey.set(k, { ...shop, isUser: true });
+      } else {
+        const completedRun = Boolean(existing.completedFullRun || shop.completedFullRun);
+        byKey.set(k, {
+          ...existing,
+          pretzelsAllRuns: Math.max(Number(existing.pretzelsAllRuns) || 0, Number(shop.pretzelsAllRuns) || 0),
+          completedFullRun: completedRun,
+          bestWinSeconds: completedRun
+            ? ((Number(existing.bestWinSeconds) > 0 && Number(shop.bestWinSeconds) > 0)
+                ? Math.min(Number(existing.bestWinSeconds), Number(shop.bestWinSeconds))
+                : (Number(shop.bestWinSeconds) > 0 ? Number(shop.bestWinSeconds) : (Number(existing.bestWinSeconds) > 0 ? Number(existing.bestWinSeconds) : null)))
+            : null,
+          isUser: true
+        });
+      }
     }
   }
 
   let entries = Array.from(byKey.values());
 
   if (activeLeaderboardMode === "time") {
-    entries = entries.filter(e => e.bestWinSeconds !== null && e.bestWinSeconds > 0);
+    entries = entries.filter(e => e.completedFullRun && e.bestWinSeconds !== null && e.bestWinSeconds > 0);
     entries.sort((a, b) => a.bestWinSeconds - b.bestWinSeconds);
   } else {
     entries.sort((a, b) => b.pretzelsAllRuns - a.pretzelsAllRuns);
   }
 
+  const topTen = entries.slice(0, LEADERBOARD_MAX_ROWS);
+
   listEl.innerHTML = "";
-  if (entries.length === 0) {
+
+  if (!isSignedIn) {
+    const noticeRow = document.createElement("div");
+    noticeRow.className = "leaderboard-row";
+    noticeRow.innerHTML = `<span class="subtext">Sign in via Bakery Options to post your shop to the Top 10 (updates every 5 min).</span>`;
+    listEl.appendChild(noticeRow);
+  }
+
+  if (topTen.length === 0) {
     const emptyRow = document.createElement("div");
     emptyRow.className = "leaderboard-row";
-    emptyRow.innerHTML = `<span>No completed win times posted yet.</span><strong>—</strong>`;
+    emptyRow.innerHTML = activeLeaderboardMode === "time"
+      ? `<span>No full 7-continent run times posted yet in ${LEADERBOARD_VERSION}.</span><strong>—</strong>`
+      : `<span>No ${LEADERBOARD_VERSION} account scores posted yet.</span><strong>—</strong>`;
     listEl.appendChild(emptyRow);
     return;
   }
 
-  entries.forEach((entry, index) => {
+  topTen.forEach((entry, index) => {
     const row = document.createElement("div");
     row.className = "leaderboard-row" + (entry.isUser ? " is-player" : "");
 
@@ -653,7 +703,7 @@ const AchievementManager = {
     }
 
     const totalAllContinentsSecs = Math.floor(GameState.totalPlaySecondsAllRuns || 0);
-    const bestEverSecs = Math.floor(GameState.bestRunSeconds || 0);
+    const bestEverSecs = GameState.completedFullRun ? Math.floor(GameState.bestRunSeconds || 0) : 0;
     const runPretzels = Math.floor(GameState.pretzels || 0);
     const bestPretzels = Math.max(Math.floor(GameState.bestRunPretzels || 0), runPretzels);
     const lifetimeTotal = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
@@ -697,7 +747,7 @@ const AchievementManager = {
     if (pretzelsBtn) pretzelsBtn.classList.toggle("active", activeLeaderboardMode === "pretzels");
     if (timeBtn) timeBtn.classList.toggle("active", activeLeaderboardMode === "time");
     renderLeaderboard();
-    syncAndFetchLeaderboard();
+    syncAndFetchLeaderboard(false);
   },
 
   renderModal() {
@@ -709,7 +759,7 @@ const AchievementManager = {
     renderContinentStatusChips();
     renderSpinningGlobe();
     renderLeaderboard();
-    syncAndFetchLeaderboard();
+    syncAndFetchLeaderboard(false);
     listEl.innerHTML = "";
 
     ACHIEVEMENTS_LIST.forEach(ach => {

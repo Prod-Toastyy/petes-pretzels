@@ -1,3 +1,4 @@
+const GAME_VERSION = "BETA.10";
 const SAVE_KEY = "petes_pretzels_save_v4";
 const HIGH_SCORES_KEY = "petes_pretzels_high_scores_v1";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
@@ -79,10 +80,12 @@ const DEFAULT_HIGH_SCORES = {
   totalPlaySecondsAllRuns: 0,
   bestRunSeconds: 0,
   bestRunPretzels: 0,
-  lifetimePretzelsBanked: 0
+  lifetimePretzelsBanked: 0,
+  completedFullRun: false
 };
 
 const DEFAULT_STATE = {
+  gameVersion: GAME_VERSION,
   started: false,
   playerName: "",
   selectedAsciiIndex: 0,
@@ -94,6 +97,7 @@ const DEFAULT_STATE = {
   totalPlaySecondsAllRuns: 0,
   bestRunSeconds: 0,
   bestRunPretzels: 0,
+  completedFullRun: false,
   goldUiUnlocked: false,
   highestContinentReached: 0,
   endingSeenForRun: false,
@@ -181,9 +185,10 @@ const GameState = {
       const parsed = JSON.parse(raw);
       return {
         totalPlaySecondsAllRuns: Math.max(0, Math.floor(Number(parsed.totalPlaySecondsAllRuns) || 0)),
-        bestRunSeconds: Math.max(0, Math.floor(Number(parsed.bestRunSeconds) || 0)),
+        bestRunSeconds: 0, // Speedrun reset for BETA.10
         bestRunPretzels: Math.max(0, Math.floor(Number(parsed.bestRunPretzels) || 0)),
-        lifetimePretzelsBanked: Math.max(0, Math.floor(Number(parsed.lifetimePretzelsBanked) || 0))
+        lifetimePretzelsBanked: Math.max(0, Math.floor(Number(parsed.lifetimePretzelsBanked) || 0)),
+        completedFullRun: false
       };
     } catch (e) {
       return { ...DEFAULT_HIGH_SCORES };
@@ -196,7 +201,8 @@ const GameState = {
         totalPlaySecondsAllRuns: Math.max(0, Math.floor(Number(scores.totalPlaySecondsAllRuns) || 0)),
         bestRunSeconds: Math.max(0, Math.floor(Number(scores.bestRunSeconds) || 0)),
         bestRunPretzels: Math.max(0, Math.floor(Number(scores.bestRunPretzels) || 0)),
-        lifetimePretzelsBanked: Math.max(0, Math.floor(Number(scores.lifetimePretzelsBanked) || 0))
+        lifetimePretzelsBanked: Math.max(0, Math.floor(Number(scores.lifetimePretzelsBanked) || 0)),
+        completedFullRun: Boolean(scores.completedFullRun)
       }));
     } catch (e) {
       console.error("Failed to save high scores:", e);
@@ -207,13 +213,13 @@ const GameState = {
     const hs = this.readHighScores();
     const runPretzels = Math.floor(this.pretzels || 0);
     const totalSecs = Math.max(this.totalPlaySecondsAllRuns || 0, hs.totalPlaySecondsAllRuns || 0);
-    const bestSecs = (this.bestRunSeconds || 0) > 0 && (hs.bestRunSeconds || 0) > 0
-      ? Math.min(this.bestRunSeconds, hs.bestRunSeconds)
-      : Math.max(this.bestRunSeconds || 0, hs.bestRunSeconds || 0);
+    const completedFlag = Boolean(this.completedFullRun && (this.bestRunSeconds || 0) > 0);
+    const bestSecs = completedFlag ? Math.floor(this.bestRunSeconds || 0) : 0;
     const bestPretzels = Math.max(this.bestRunPretzels || 0, hs.bestRunPretzels || 0, runPretzels);
     const bankedLifetime = Math.max(this.lifetimePretzelsAllRuns || 0, hs.lifetimePretzelsBanked || 0);
 
     this.totalPlaySecondsAllRuns = totalSecs;
+    this.completedFullRun = completedFlag;
     this.bestRunSeconds = bestSecs;
     this.bestRunPretzels = bestPretzels;
     this.lifetimePretzelsAllRuns = bankedLifetime;
@@ -222,7 +228,8 @@ const GameState = {
       totalPlaySecondsAllRuns: totalSecs,
       bestRunSeconds: bestSecs,
       bestRunPretzels: bestPretzels,
-      lifetimePretzelsBanked: bankedLifetime
+      lifetimePretzelsBanked: bankedLifetime,
+      completedFullRun: completedFlag
     });
   },
 
@@ -316,6 +323,7 @@ const GameState = {
     let isNewBestTime = false;
     let isNewBestPretzels = false;
 
+    this.completedFullRun = true;
     if (currentSecs > 0 && ((this.bestRunSeconds || 0) === 0 || currentSecs < this.bestRunSeconds)) {
       this.bestRunSeconds = currentSecs;
       isNewBestTime = true;
@@ -347,7 +355,8 @@ const GameState = {
 
     const runSecs = Math.floor(this.elapsedRunSeconds || 0);
     const runPretzels = Math.floor(this.pretzels || 0);
-    let nextBestSecs = this.bestRunSeconds || 0;
+    let nextBestSecs = this.completedFullRun ? (this.bestRunSeconds || 0) : 0;
+    const nextCompletedFullRun = Boolean(this.completedFullRun || conqueringFinalWorld);
     if (conqueringFinalWorld && runSecs > 0 && (nextBestSecs === 0 || runSecs < nextBestSecs)) {
       nextBestSecs = runSecs;
     }
@@ -355,6 +364,7 @@ const GameState = {
 
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
 
+    this.gameVersion = GAME_VERSION;
     this.started = true;
     this.playerName = preservedName;
     this.selectedAsciiIndex = preservedAscii;
@@ -365,6 +375,7 @@ const GameState = {
     this.highestContinentReached = nextHighestContinent;
     this.goldenPretzels = totalGold;
     this.goldUiUnlocked = unlockedGoldUi;
+    this.completedFullRun = nextCompletedFullRun;
     this.bestRunSeconds = nextBestSecs;
     this.bestRunPretzels = nextBestPretzels;
     this.runStartTime = Date.now();
@@ -397,11 +408,13 @@ const GameState = {
     const totalGold = (this.goldenPretzels || 0) + bonusGold;
     const unlockedGoldUi = Boolean(this.goldUiUnlocked);
     const preservedHighestContinent = Math.max(this.highestContinentReached || 0, this.continentIndex || 0);
-    const nextBestSecs = this.bestRunSeconds || 0;
+    const nextCompletedFullRun = Boolean(this.completedFullRun);
+    const nextBestSecs = nextCompletedFullRun ? (this.bestRunSeconds || 0) : 0;
     const nextBestPretzels = Math.max(this.bestRunPretzels || 0, Math.floor(this.pretzels || 0));
 
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
 
+    this.gameVersion = GAME_VERSION;
     this.started = true;
     this.playerName = preservedName;
     this.selectedAsciiIndex = preservedAscii;
@@ -412,6 +425,7 @@ const GameState = {
     this.highestContinentReached = preservedHighestContinent;
     this.goldenPretzels = totalGold;
     this.goldUiUnlocked = unlockedGoldUi;
+    this.completedFullRun = nextCompletedFullRun;
     this.bestRunSeconds = nextBestSecs;
     this.bestRunPretzels = nextBestPretzels;
     this.runStartTime = Date.now();
@@ -423,6 +437,7 @@ const GameState = {
   },
 
   getSnapshot() {
+    this.gameVersion = GAME_VERSION;
     this.syncHighestContinent();
     this.syncPersistentHighScores();
     this.lastTick = Date.now();
@@ -440,6 +455,10 @@ const GameState = {
         this[key] = saved[key];
       }
     }
+    this.gameVersion = GAME_VERSION;
+    // Reset speedrun time for BETA.10 while keeping pretzel high scores
+    this.bestRunSeconds = 0;
+    this.completedFullRun = false;
 
     this.syncHighestContinent();
     this.syncPersistentHighScores();
@@ -492,7 +511,8 @@ const GameState = {
   load() {
     const hs = this.readHighScores();
     this.totalPlaySecondsAllRuns = hs.totalPlaySecondsAllRuns;
-    this.bestRunSeconds = hs.bestRunSeconds;
+    this.completedFullRun = false;
+    this.bestRunSeconds = 0;
     this.bestRunPretzels = hs.bestRunPretzels;
     this.lifetimePretzelsAllRuns = hs.lifetimePretzelsBanked;
 
@@ -513,9 +533,11 @@ const GameState = {
 
     localStorage.removeItem(SAVE_KEY);
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+    this.gameVersion = GAME_VERSION;
 
     this.totalPlaySecondsAllRuns = preservedScores.totalPlaySecondsAllRuns;
-    this.bestRunSeconds = preservedScores.bestRunSeconds;
+    this.completedFullRun = false;
+    this.bestRunSeconds = 0;
     this.bestRunPretzels = preservedScores.bestRunPretzels;
     this.lifetimePretzelsAllRuns = preservedScores.lifetimePretzelsBanked;
     this.writeHighScores(preservedScores);
