@@ -1928,3 +1928,131 @@ button.sell-btn:hover:not(:disabled) {
   0% { transform: translate(-50%, -50%) scale(0.6); opacity: 1; }
   100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.2); opacity: 0; }
 }
+
+@media (max-width: 768px) {
+  body {
+    padding: 12px 12px 28px;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  .top-bar {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  #console-box {
+    flex: 1 1 100%;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .top-stat-badge,
+  .top-ach-btn,
+  .player-badge-btn {
+    min-height: 40px;
+    padding: 8px 11px;
+    font-size: 12px;
+  }
+
+  header {
+    padding: 14px;
+    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+
+  #ascii-stage {
+    width: 100%;
+    font-size: 9.5px;
+    line-height: 1.15;
+    padding: 8px 10px;
+    text-align: center;
+    overflow-x: auto;
+  }
+
+  .intro-screen {
+    min-height: 100dvh;
+    padding: 16px;
+  }
+
+  .intro-ascii-art {
+    max-width: 100vw;
+    font-size: clamp(4.5px, 1.45vw, 8.5px);
+    line-height: 1.1;
+    overflow-x: auto;
+  }
+
+  .row-panel {
+    padding: 12px;
+  }
+
+  .module-box {
+    flex: 1 1 100%;
+    min-width: 0;
+    padding: 12px;
+  }
+
+  .module-box button,
+  .btn-row > button,
+  .close-small-btn,
+  .section-collapse-btn {
+    min-height: 42px;
+  }
+
+  .btn-row {
+    flex-wrap: wrap;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .modal-card,
+  .modal-card.small-modal,
+  .modal-card.ending-card {
+    max-height: none;
+    padding: 16px;
+    margin: auto 0;
+  }
+
+  .modal-card input[type="text"],
+  .modal-card input[type="email"],
+  .modal-card input[type="password"],
+  .theme-select,
+  .recipe-row select {
+    font-size: 16px;
+  }
+
+  .ascii-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .ascii-option pre {
+    font-size: 8px;
+    line-height: 1.1;
+  }
+
+  .plinko-board {
+    font-size: 9.5px;
+    line-height: 1.15;
+    padding: 6px;
+  }
+
+  .globe-box {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ascii-globe {
+    font-size: 8px;
+    line-height: 1.08;
+  }
+}

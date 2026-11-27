@@ -1,0 +1,21 @@
+{
+  "name": "Pete's Pretzels",
+  "short_name": "Pretzels",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#181412",
+  "theme_color": "#e89f48",
+  "icons": [
+    {
+      "src": "pretzel.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "pretzel.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
