@@ -1,8 +1,18 @@
 const THEME_STORAGE_KEY = "petes_pretzels_theme";
 const COLLAPSED_SECTIONS_KEY = "petes_pretzels_collapsed_sections_v1";
+const AUDIO_PREFS_KEY = "petes_pretzels_audio_v1";
 const SHOOTING_STAR_INTERVAL_MS = 30 * 60 * 1000;
 const MAX_CLICK_POPS = 18;
 const STARFIELD_STAR_COUNT = 46;
+
+const MUSIC_TRACKS = [
+  { file: "binaural-deep-space.mp3", label: "Binaural Deep Space" },
+  { file: "galactic-spacetrip.mp3", label: "Galactic Spacetrip" },
+  { file: "jazzy.mp3", label: "Jazzy" },
+  { file: "vibes.mp3", label: "Vybez" },
+  { file: "chill.mp3", label: "Chill" },
+  { file: "minecraft.mp3", label: "Minecraft" }
+];
 
 const THEMES_CATALOG = [
   { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
@@ -99,6 +109,200 @@ function onClick(id, handler) {
   const el = getEl(id);
   if (el) el.addEventListener("click", handler);
 }
+
+const SoundSystem = {
+  ctx: null,
+  bgmEl: null,
+  enabledMusic: false,
+  musicTrack: MUSIC_TRACKS[0].file,
+  musicVol: 0.35,
+  sfxVol: 0.65,
+
+  loadPrefs() {
+    try {
+      const raw = localStorage.getItem(AUDIO_PREFS_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      if (typeof p.enabledMusic === "boolean") this.enabledMusic = p.enabledMusic;
+      if (typeof p.musicTrack === "string" && MUSIC_TRACKS.some(t => t.file === p.musicTrack)) {
+        this.musicTrack = p.musicTrack;
+      }
+      if (Number.isFinite(p.musicVol)) this.musicVol = Math.max(0, Math.min(1, p.musicVol));
+      if (Number.isFinite(p.sfxVol)) this.sfxVol = Math.max(0, Math.min(1, p.sfxVol));
+    } catch (e) {
+      console.error("Audio pref load error:", e);
+    }
+  },
+
+  savePrefs() {
+    try {
+      localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify({
+        enabledMusic: this.enabledMusic,
+        musicTrack: this.musicTrack,
+        musicVol: this.musicVol,
+        sfxVol: this.sfxVol
+      }));
+    } catch (e) {
+      console.error("Audio pref save error:", e);
+    }
+  },
+
+  ensureContext() {
+    if (!this.ctx && typeof window !== "undefined") {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
+    }
+    return this.ctx;
+  },
+
+  ensureBgm() {
+    if (!this.bgmEl) {
+      this.bgmEl = new Audio();
+      this.bgmEl.loop = true;
+      this.bgmEl.preload = "none";
+    }
+    const desiredSrc = `music/${this.musicTrack}`;
+    if (this.bgmEl.getAttribute("src") !== desiredSrc) {
+      this.bgmEl.setAttribute("src", desiredSrc);
+    }
+    this.bgmEl.volume = this.musicVol;
+    return this.bgmEl;
+  },
+
+  syncMusicPlayback() {
+    const bgm = this.ensureBgm();
+    bgm.volume = this.musicVol;
+    if (this.enabledMusic) {
+      bgm.play().catch(() => {});
+    } else {
+      bgm.pause();
+    }
+    this.savePrefs();
+    this.refreshControlsUI();
+  },
+
+  playTone(freq, duration, type = "sine", gainPeak = 0.14, delaySec = 0) {
+    if (this.sfxVol <= 0) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime + delaySec;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+
+    const peak = Math.max(0.0001, gainPeak * this.sfxVol);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  },
+
+  playSfx(kind) {
+    if (this.sfxVol <= 0) return;
+    if (kind === "bake") {
+      this.playTone(340, 0.06, "triangle", 0.10, 0);
+      this.playTone(460, 0.05, "sine", 0.07, 0.025);
+    } else if (kind === "buy") {
+      this.playTone(520, 0.07, "sine", 0.11, 0);
+      this.playTone(660, 0.09, "sine", 0.11, 0.055);
+    } else if (kind === "tier") {
+      this.playTone(440, 0.11, "triangle", 0.14, 0);
+      this.playTone(554.37, 0.11, "triangle", 0.14, 0.08);
+      this.playTone(659.25, 0.18, "sine", 0.15, 0.16);
+    } else if (kind === "achievement") {
+      this.playTone(523.25, 0.12, "triangle", 0.16, 0);
+      this.playTone(659.25, 0.12, "triangle", 0.16, 0.09);
+      this.playTone(783.99, 0.14, "triangle", 0.17, 0.18);
+      this.playTone(1046.5, 0.28, "sine", 0.18, 0.27);
+    } else if (kind === "prestige") {
+      this.playTone(392.0, 0.14, "sine", 0.15, 0);
+      this.playTone(523.25, 0.14, "sine", 0.15, 0.1);
+      this.playTone(783.99, 0.26, "triangle", 0.16, 0.2);
+    }
+  },
+
+  populateTrackSelect() {
+    const trackSel = getEl("select-music-track");
+    if (!trackSel) return;
+    trackSel.innerHTML = "";
+    MUSIC_TRACKS.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.file;
+      opt.textContent = t.label;
+      if (t.file === this.musicTrack) opt.selected = true;
+      trackSel.appendChild(opt);
+    });
+  },
+
+  refreshControlsUI() {
+    const toggleBtn = getEl("btn-toggle-music");
+    const trackSel = getEl("select-music-track");
+    const musicSlider = getEl("slider-music-vol");
+    const sfxSlider = getEl("slider-sfx-vol");
+    const musicLabel = getEl("music-vol-label");
+    const sfxLabel = getEl("sfx-vol-label");
+
+    if (toggleBtn) toggleBtn.textContent = `Music: ${this.enabledMusic ? "ON" : "OFF"}`;
+    if (trackSel && trackSel.value !== this.musicTrack) trackSel.value = this.musicTrack;
+    if (musicSlider) musicSlider.value = String(Math.round(this.musicVol * 100));
+    if (sfxSlider) sfxSlider.value = String(Math.round(this.sfxVol * 100));
+    if (musicLabel) musicLabel.textContent = `${Math.round(this.musicVol * 100)}%`;
+    if (sfxLabel) sfxLabel.textContent = `${Math.round(this.sfxVol * 100)}%`;
+  },
+
+  bindUI() {
+    this.loadPrefs();
+    this.populateTrackSelect();
+    this.ensureBgm();
+    this.refreshControlsUI();
+
+    onClick("btn-toggle-music", () => {
+      this.ensureContext();
+      this.enabledMusic = !this.enabledMusic;
+      this.syncMusicPlayback();
+    });
+
+    const trackSel = getEl("select-music-track");
+    if (trackSel) {
+      trackSel.addEventListener("change", (e) => {
+        this.ensureContext();
+        this.musicTrack = e.target.value;
+        this.syncMusicPlayback();
+      });
+    }
+
+    const musicSlider = getEl("slider-music-vol");
+    if (musicSlider) {
+      musicSlider.addEventListener("input", (e) => {
+        this.musicVol = Math.max(0, Math.min(1, Number(e.target.value) / 100));
+        if (this.bgmEl) this.bgmEl.volume = this.musicVol;
+        this.savePrefs();
+        this.refreshControlsUI();
+      });
+    }
+
+    const sfxSlider = getEl("slider-sfx-vol");
+    if (sfxSlider) {
+      sfxSlider.addEventListener("input", (e) => {
+        this.sfxVol = Math.max(0, Math.min(1, Number(e.target.value) / 100));
+        this.savePrefs();
+        this.refreshControlsUI();
+        this.playSfx("bake");
+      });
+    }
+  }
+};
+
+window.SoundSystem = SoundSystem;
 
 function applyTabPretzelIconAndTitle(pretzelCount = 0) {
   let linkEl = document.querySelector("link[rel~='icon']");
@@ -375,6 +579,7 @@ function triggerModuleTierGlow(boxId) {
   box.classList.remove("tier-up-flash");
   void box.offsetWidth;
   box.classList.add("tier-up-flash");
+  SoundSystem.playSfx("tier");
   setTimeout(() => {
     if (box.isConnected) box.classList.remove("tier-up-flash");
   }, 1150);
@@ -529,6 +734,7 @@ function executePrestigeRun() {
   applySessionUI();
   hideEl("confirm-action-modal");
   hideEl("restart-modal");
+  SoundSystem.playSfx("prestige");
 
   const bonusNote = bonusGold > 0 ? ` (+${bonusGold} newly claimed)` : "";
   logMessage(`PRESTIGE RUN STARTED! Fresh start in North America with ${totalGold.toLocaleString()} Golden Pretzels${bonusNote} (+${totalGold * 25}% cash)!`);
@@ -558,7 +764,7 @@ async function clearCloudLeaderboardScoreOnWipe() {
         best_win_seconds: null,
         game_version: getActiveGameVersion(),
         updated_at: new Date().toISOString()
-      }, { onConflict: "user_id,shop_key" });
+      }, { onConflict: "user_id" });
   } catch (e) {
     console.warn("Leaderboard wipe sync warning:", e);
   }
@@ -770,6 +976,8 @@ function startGameFromModal() {
   const inputEl = getEl("input-player-name");
   const nameInput = inputEl ? inputEl.value.trim() : "";
   const finalName = nameInput || "Baker";
+
+  SoundSystem.ensureContext();
 
   if (typeof GameState !== "undefined") {
     GameState.playerName = finalName;
@@ -1859,6 +2067,7 @@ function buyRangeShooterStep() {
   GameState.funds -= GameState.rangeShooterCost;
   GameState.rangeShooters = (GameState.rangeShooters || 0) + 1;
   GameState.rangeShooterCost = Math.round(GameState.rangeShooterCost * 1.48 * 100) / 100;
+  SoundSystem.playSfx("buy");
   logMessage(`Purchased Range Shooter #${GameState.rangeShooters} (fires every ${getRangeShooterIntervalSec().toFixed(2)}s)!`);
   render();
   return true;
@@ -2006,6 +2215,7 @@ function handleManualBake() {
   if (baked > 0) {
     recordManualBakeRate(baked);
     spawnSubtleClickPop(bakeBtn, `🥨 +${baked}`);
+    SoundSystem.playSfx("bake");
   }
   render();
 }
@@ -2021,6 +2231,7 @@ function buyDoughBatch(isAuto = false) {
       GameState.doughCost = Math.round(GameState.doughCost * 1.15 * 100) / 100;
     }
     if (!isAuto) {
+      SoundSystem.playSfx("buy");
       spawnSubtleClickPop(getEl("btn-buy-dough"), `🥨 +${batchSize.toLocaleString()} lbs`);
       logMessage(`Restocked +${batchSize.toLocaleString()} lbs of fresh dough.`);
     }
@@ -2036,6 +2247,7 @@ function buySaltMineStep() {
   GameState.saltMines += 1;
   GameState.saltMineCost = Math.round(GameState.saltMineCost * 1.45 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.saltMines);
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
   }
@@ -2050,6 +2262,7 @@ function buyWheatFarmStep() {
   GameState.wheatFarms += 1;
   GameState.wheatFarmCost = Math.round(GameState.wheatFarmCost * 1.45 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
   }
@@ -2064,6 +2277,7 @@ function buyRefineryStep() {
   GameState.refineries += 1;
   GameState.refineryCost = Math.round(GameState.refineryCost * 1.50 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.refineries);
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
   }
@@ -2080,6 +2294,7 @@ function buyPromoStep() {
   GameState.promoCost = Math.round(GameState.promoCost * 1.75 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.promoLevel);
   updateDemand();
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Marketing reached ${newTierInfo.label} Demand!`);
   } else {
@@ -2096,6 +2311,7 @@ function buyExtruderStep() {
   GameState.extruders += 1;
   GameState.extruderCost = Math.round(GameState.extruderCost * 1.42 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.extruders);
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
   }
@@ -2110,6 +2326,7 @@ function buyTruckStep() {
   GameState.trucks += 1;
   GameState.truckCost = Math.round(GameState.truckCost * 1.48 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.trucks);
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
   }
@@ -2124,6 +2341,7 @@ function buyDroneStep() {
   GameState.drones += 1;
   GameState.droneCost = Math.round(GameState.droneCost * 1.55 * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.drones);
+  SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
   }
@@ -2274,6 +2492,7 @@ function dropPlinkoPretzel() {
     col: Math.max(1, Math.min(PLINKO_COLS - 2, Math.round(plinkoDropperPos)))
   };
   plinkoStepTimer = 0;
+  SoundSystem.playSfx("bake");
   spawnSubtleClickPop(getEl("btn-drop-plinko"), "🥨 ▼");
   setText("plinko-feedback", "Dropping pretzel...");
   renderPlinkoBoard(true);
@@ -2283,12 +2502,14 @@ function dropPlinkoPretzel() {
 function resolvePlinkoBucket(finalCol) {
   if (finalCol >= 8 && finalCol <= 10) {
     GameState.goldenRushEndTime = Date.now() + 30000;
+    SoundSystem.playSfx("achievement");
     setText("plinko-feedback", "RARE JACKPOT [★]! 30s GOLDEN RUSH!");
     logMessage("GOLDEN RUSH! 2x Cash & rare Golden Pretzels for 30s!");
     spawnFallingGoldenPretzel();
   } else if ((finalCol >= 4 && finalCol <= 7) || (finalCol >= 11 && finalCol <= 14)) {
     const freeDough = Math.max(250, Math.round((GameState.doughBatchSize || 500) * 0.5));
     GameState.dough += freeDough;
+    SoundSystem.playSfx("buy");
     setText("plinko-feedback", `LANDED IN [🌾]: Won +${freeDough.toLocaleString()} lbs Dough!`);
     logMessage(`Plinko Winner! Won +${freeDough.toLocaleString()} lbs of fresh dough.`);
   } else {
@@ -2328,6 +2549,7 @@ function spawnFallingGoldenPretzel() {
 
     GameState.pretzels += reward;
     GameState.inventory += reward;
+    SoundSystem.playSfx("buy");
     logMessage(`CAUGHT GOLDEN PRETZEL! +${reward.toLocaleString()} pretzels added!`);
     el.remove();
     render();
@@ -2365,10 +2587,12 @@ function shootTarget() {
 
   if (bestReward >= 3) {
     GameState.researchPoints += 3;
+    SoundSystem.playSfx("buy");
     setText("range-feedback", `BULLSEYE! +3 RP (${targets.length} targets active)`);
     if (trackEl) trackEl.classList.add("flash-hit");
   } else if (bestReward >= 1) {
     GameState.researchPoints += 1;
+    SoundSystem.playSfx("bake");
     setText("range-feedback", `Nice graze! +1 RP (${targets.length} targets active)`);
     if (trackEl) trackEl.classList.add("flash-hit");
   } else {
@@ -2522,6 +2746,7 @@ function completeContinentExpansion() {
   updateDemand();
   applySessionUI();
   hideEl("achievements-modal");
+  SoundSystem.playSfx("prestige");
 
   if (conqueringFinalWorld) {
     const fastRunSecs = recordsBeforeReset.runSecs || Math.floor(GameState.bestRunSeconds || 0);
@@ -2549,6 +2774,8 @@ function completeContinentExpansion() {
 function bindControls() {
   if (controlsBound) return;
   controlsBound = true;
+
+  SoundSystem.bindUI();
 
   document.addEventListener("pointermove", (e) => {
     lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
@@ -2597,6 +2824,7 @@ function bindControls() {
   onClick("btn-prestige-next-loop", () => {
     hideEl("ending-modal");
     applyTheme(hasSubHourFullRunWin() ? "diamond-sparkly" : "gold-solid");
+    SoundSystem.playSfx("prestige");
     logMessage("New Earth Prestige Loop started with all Golden Pretzels and themes intact!");
     render();
   });
@@ -2759,8 +2987,11 @@ function bindControls() {
       GameState.kneadClicks = 0;
       GameState.dough += 1;
       GameState.handMadeDoughTotal += 1;
+      SoundSystem.playSfx("buy");
       spawnSubtleClickPop(getEl("btn-knead-dough"), "🥨 +1 lb");
       logMessage("Hand-kneaded +1 lb of emergency dough!");
+    } else {
+      SoundSystem.playSfx("bake");
     }
     render();
   });
@@ -2783,6 +3014,7 @@ function bindControls() {
     refreshThemeDropdown(true);
     refreshCloudMenuUI();
     refreshPrestigeMenuUI();
+    SoundSystem.refreshControlsUI();
     setText("cloud-menu-msg", "");
     showEl("restart-modal");
   });
@@ -3037,6 +3269,7 @@ function checkUnlocks() {
             if (scaledCash > 0) GameState.funds -= scaledCash;
             if (proj.rpCost > 0) GameState.researchPoints -= proj.rpCost;
             GameState.completedProjects.push(proj.id);
+            SoundSystem.playSfx("buy");
             proj.effect();
             card.remove();
             GameState.save(true);

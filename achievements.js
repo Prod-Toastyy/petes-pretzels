@@ -611,6 +611,8 @@ const AchievementManager = {
       void toast.offsetWidth;
       toast.classList.add("show");
 
+    if (window.SoundSystem) window.SoundSystem.playSfx("achievement");
+
       this.spawnSparks(toast);
 
       setTimeout(() => {

@@ -32,7 +32,7 @@
              					        .'  `'._.'`  '.
               					      |  .--;   ;--.  |
               					      |  (  /   \  )  |
-              					      \  ;` /^\ `;  /
+              					       \  ;` /^\ `;  /
                					        :` .'._.'. `;
                    				        '-`'.___.'`-'</pre>
       <span class="intro-cta-label">click pretzel to start</span>
@@ -247,6 +247,26 @@
         </div>
 
         <p id="cloud-menu-msg" class="subtext"></p>
+      </div>
+
+      <div class="option-group" style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-module);">
+        <div class="module-head" style="margin-bottom: 8px;">
+          <label style="margin: 0;">Audio &amp; Space Chill Music</label>
+          <button type="button" id="btn-toggle-music" class="close-small-btn">Music: OFF</button>
+        </div>
+
+        <label for="select-music-track" style="margin-bottom: 4px;">Chill Track</label>
+        <select id="select-music-track" class="theme-select" style="margin-bottom: 10px;">
+          <option value="ps3-orbit.mp3">PS3 Space Orbit (Chill)</option>
+          <option value="nebula-drift.mp3">Nebula Drift (Spacey)</option>
+          <option value="midnight-bakery.mp3">Midnight Bakery Lo-Fi</option>
+        </select>
+
+        <label for="slider-music-vol" style="margin-bottom: 4px;">Music Volume: <strong id="music-vol-label">35%</strong></label>
+        <input type="range" id="slider-music-vol" min="0" max="100" value="35" style="width: 100%; margin-bottom: 10px; accent-color: var(--accent);">
+
+        <label for="slider-sfx-vol" style="margin-bottom: 4px;">SFX Volume: <strong id="sfx-vol-label">65%</strong></label>
+        <input type="range" id="slider-sfx-vol" min="0" max="100" value="65" style="width: 100%; accent-color: var(--accent);">
       </div>
 
       <div class="option-group" style="margin-bottom: 16px;">
@@ -551,3 +571,5 @@
   <script src="main.js"></script>
 </body>
 </html>
+
+

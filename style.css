@@ -282,6 +282,8 @@ body.theme-coral {
   --accent: #38d6e8;
   --accent-hover: #59e4f5;
   --accent-text: #061418;
+  --money-green: #6ee79c;
+  --trophy-gold: #ffd23f;
   --btn-bg: #193842;
   --btn-hover: #224c59;
   --btn-border: #316c7d;
@@ -642,39 +644,6 @@ body.theme-light-mode .module-ascii::after {
 .module-box.tier-up-flash {
   border-color: var(--trophy-gold) !important;
   animation: moduleTierGlowPulse 1.1s ease-out forwards;
-}
-
-/* Theme Swatch Preview */
-.theme-swatch-preview {
-  margin-top: 8px;
-  padding: 7px 10px;
-  background: var(--bg-track);
-  border: 1px solid var(--border-panel);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 11.5px;
-}
-
-.swatch-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.swatch-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  display: inline-block;
-}
-
-.swatch-label {
-  color: var(--text-muted);
-  font-weight: 600;
 }
 
 body.golden-rush-active {
@@ -1266,6 +1235,15 @@ h1 {
   font-size: 12px;
 }
 
+button,
+.top-ach-btn,
+.player-badge-btn,
+.section-collapse-btn,
+.ascii-option {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 button {
   font-family: 'JetBrains Mono', monospace;
   font-size: 12.5px;
@@ -1354,6 +1332,9 @@ button.sell-btn:hover:not(:disabled) {
   margin: 4px 0;
   overflow: hidden;
   transition: border-color 0.15s ease, background-color 0.15s ease;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .range-track.flash-hit {
@@ -1404,6 +1385,9 @@ button.sell-btn:hover:not(:disabled) {
   text-align: center;
   white-space: pre;
   overflow-x: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .projects-wrap {
@@ -1950,9 +1934,9 @@ button.sell-btn:hover:not(:disabled) {
   .top-stat-badge,
   .top-ach-btn,
   .player-badge-btn {
-    min-height: 40px;
-    padding: 8px 11px;
-    font-size: 12px;
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 12.5px;
   }
 
   header {
@@ -1997,11 +1981,19 @@ button.sell-btn:hover:not(:disabled) {
     padding: 12px;
   }
 
+  button,
   .module-box button,
   .btn-row > button,
   .close-small-btn,
   .section-collapse-btn {
-    min-height: 42px;
+    min-height: 48px;
+    padding: 11px 14px;
+    font-size: 13.5px;
+  }
+
+  #btn-bake {
+    min-height: 54px;
+    font-size: 14.5px;
   }
 
   .btn-row {
@@ -2056,3 +2048,4 @@ button.sell-btn:hover:not(:disabled) {
     line-height: 1.08;
   }
 }
+```[cite: 8]
