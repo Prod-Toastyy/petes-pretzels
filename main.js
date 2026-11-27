@@ -2,8 +2,8 @@ const THEME_STORAGE_KEY = "petes_pretzels_theme";
 const COLLAPSED_SECTIONS_KEY = "petes_pretzels_collapsed_sections_v1";
 const AUDIO_PREFS_KEY = "petes_pretzels_audio_v1";
 const SHOOTING_STAR_INTERVAL_MS = 30 * 60 * 1000;
-const MAX_CLICK_POPS = 18;
-const STARFIELD_STAR_COUNT = 46;
+const MAX_CLICK_POPS = 12;
+const STARFIELD_STAR_COUNT = 24;
 
 const MUSIC_TRACKS = [
   { file: "binaural-deep-space.mp3", label: "Binaural Deep Space" },
@@ -60,6 +60,10 @@ const lastModuleTierMap = new Map();
 const lastPlinkoSignature = { value: "" };
 let lastThemeDropdownSignature = "";
 let lastDocumentTitle = "";
+let lastStageAnimClass = "";
+let lastProjectAffordSig = "";
+let lastRangeTargetLefts = ["", "", "", "", ""];
+let lastCrosshairLeft = "";
 let lastPointerPos = {
   x: typeof window !== "undefined" ? Math.round(window.innerWidth * 0.5) : 400,
   y: typeof window !== "undefined" ? Math.round(window.innerHeight * 0.5) : 300
@@ -334,6 +338,7 @@ function initStarfieldBackdrop() {
   }
 
   if (layer.childElementCount === 0) {
+    const frag = document.createDocumentFragment();
     const starGlyphs = ["✦", "✧", "·", "*"];
     for (let i = 0; i < STARFIELD_STAR_COUNT; i++) {
       const star = document.createElement("span");
@@ -341,14 +346,16 @@ function initStarfieldBackdrop() {
       star.textContent = starGlyphs[i % starGlyphs.length];
       star.style.left = `${((i * 19.7) % 97) + 1.5}%`;
       star.style.top = `${((i * 29.3) % 94) + 2.5}%`;
-      star.style.fontSize = i % 3 === 0 ? "13px" : i % 2 === 0 ? "10px" : "8px";
-      star.style.opacity = String(0.35 + ((i % 5) * 0.14));
-      layer.appendChild(star);
+      star.style.fontSize = i % 3 === 0 ? "12px" : i % 2 === 0 ? "10px" : "8px";
+      star.style.opacity = String(0.32 + ((i % 4) * 0.14));
+      frag.appendChild(star);
     }
+    layer.appendChild(frag);
   }
 }
 
 function spawnRareShootingStar(announce = true) {
+  if (document.hidden) return;
   const sky = getEl("golden-sky-layer") || document.body;
   const star = document.createElement("div");
   star.className = "shooting-star";
@@ -369,6 +376,7 @@ function spawnRareShootingStar(announce = true) {
 }
 
 function spawnSubtleClickPop(_anchorEl, labelText = "+1") {
+  if (document.hidden) return;
   const sky = getEl("golden-sky-layer") || document.body;
   const existingPops = sky.querySelectorAll(".subtle-click-pop");
   if (existingPops.length >= MAX_CLICK_POPS) {
@@ -536,6 +544,7 @@ function toggleSectionCollapsed(sectionId) {
 }
 
 function triggerScreenShake() {
+  if (document.hidden) return;
   document.body.classList.remove("screen-shake");
   void document.body.offsetWidth;
   document.body.classList.add("screen-shake");
@@ -543,6 +552,7 @@ function triggerScreenShake() {
 }
 
 function triggerConfettiStarBurst(centerX = window.innerWidth * 0.5, centerY = window.innerHeight * 0.4, count = 12) {
+  if (document.hidden) return;
   const stars = ["✦", "★", "✧", "*"];
   for (let i = 0; i < count; i++) {
     const el = document.createElement("span");
@@ -591,6 +601,7 @@ function getUnlockedThemeTier() {
 }
 
 function isThemeUnlocked(themeObj) {
+  if (!themeObj || themeObj.id === "espresso") return true;
   if (themeObj.requiresAllAchievements) {
     return hasAllAchievementsUnlocked();
   }
@@ -605,11 +616,23 @@ function isThemeUnlocked(themeObj) {
   return unlockedTier >= themeObj.minContinent;
 }
 
-function refreshThemeDropdown(force = false) {
+function getPreferredThemeId() {
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY);
+    if (!raw) return "espresso";
+    const found = THEMES_CATALOG.find(t => t.id === raw);
+    if (!found) return "espresso";
+    return found.id;
+  } catch (e) {
+    return "espresso";
+  }
+}
+
+function refreshThemeDropdown(force = false, activeThemeId = null) {
   const select = getEl("select-theme");
   if (!select) return;
 
-  const currentTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
+  const currentTheme = activeThemeId || getPreferredThemeId();
   const unlockSig = THEMES_CATALOG.map(t => (isThemeUnlocked(t) ? "1" : "0")).join("");
   const signature = `${currentTheme}|${unlockSig}`;
 
@@ -634,18 +657,32 @@ function refreshThemeDropdown(force = false) {
     if (t.id === currentTheme) opt.selected = true;
     select.appendChild(opt);
   });
+  select.value = currentTheme;
 }
 
-function applyTheme(themeId) {
-  const themeObj = THEMES_CATALOG.find(t => t.id === themeId) || THEMES_CATALOG[0];
-  const safeTheme = isThemeUnlocked(themeObj) ? themeObj : THEMES_CATALOG[0];
+function applyTheme(themeId, persist = true) {
+  const requested = THEMES_CATALOG.find(t => t.id === themeId) || THEMES_CATALOG[0];
+  const safeTheme = isThemeUnlocked(requested) ? requested : THEMES_CATALOG[0];
 
   document.body.classList.remove(...ALL_THEME_CLASSES);
+  document.documentElement.classList.remove(...ALL_THEME_CLASSES);
+
   if (safeTheme.id !== "espresso") {
     document.body.classList.add(`theme-${safeTheme.id}`);
   }
-  localStorage.setItem(THEME_STORAGE_KEY, safeTheme.id);
-  refreshThemeDropdown(true);
+
+  document.documentElement.style.colorScheme = safeTheme.id === "light-mode" ? "light" : "dark";
+  document.body.style.backgroundColor = "";
+  document.body.style.color = "";
+
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, safeTheme.id);
+    } catch (e) {
+      console.error("Failed to save theme:", e);
+    }
+  }
+  refreshThemeDropdown(true, safeTheme.id);
 }
 
 function refreshCloudMenuUI() {
@@ -723,13 +760,13 @@ function openActionConfirmation(actionType) {
 
 function executePrestigeRun() {
   if (typeof GameState === "undefined" || typeof GameState.prestigeRestartRun !== "function") return;
-  const activeTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
+  const activeTheme = getPreferredThemeId();
   const canClaimPending = typeof AchievementManager !== "undefined" && AchievementManager.canExpandContinent();
   const { totalGold, bonusGold } = GameState.prestigeRestartRun(canClaimPending);
 
   resetRegionalPanelsUI();
   updateDemand();
-  applyTheme(activeTheme);
+  applyTheme(activeTheme, true);
   applySessionUI();
   hideEl("confirm-action-modal");
   hideEl("restart-modal");
@@ -816,7 +853,7 @@ async function executeFullWipe() {
     lastLeaderboardSyncByMode = { pretzels: 0, time: 0 };
   }
 
-  applyTheme("espresso");
+  applyTheme("espresso", true);
   resetRegionalPanelsUI();
   hideEl("confirm-action-modal");
   hideEl("restart-modal");
@@ -849,7 +886,7 @@ async function applyCloudUserSave(user) {
     GameState.applySaveObject(cloudSave);
     sanitizeNumbers();
     updateDemand();
-    refreshThemeDropdown(true);
+    applyTheme(getPreferredThemeId(), false);
     applySessionUI();
     logMessage(`Cloud save loaded for ${GameState.playerName}.`);
     render();
@@ -889,7 +926,9 @@ function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "", asciiElId
   if (box) {
     const desiredTierClass = info.tier > 0 ? `tier-${info.tier}` : "";
     if (!desiredTierClass) {
-      box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
+      if (box.classList.contains("tier-1") || box.classList.contains("tier-2") || box.classList.contains("tier-3") || box.classList.contains("tier-4")) {
+        box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
+      }
     } else if (!box.classList.contains(desiredTierClass)) {
       box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
       box.classList.add(desiredTierClass);
@@ -934,7 +973,7 @@ function getEvolvedAscii() {
     : 0;
   const base = gallery[idx] || gallery[0];
   const domPct = getDominanceForStage();
-  const sparkFrame = ["✦", "✧", "★", "·"][Math.floor(Date.now() / 350) % 4];
+  const sparkFrame = ["✦", "✧", "★", "·"][Math.floor(Date.now() / 600) % 4];
 
   if (domPct >= 100) {
     return `👑 ═══ KING OF PRETZELS ═══ 👑\n${sparkFrame} ${base} ${sparkFrame}\n👑 ════ 100% DOMINANCE ════ 👑`;
@@ -952,19 +991,19 @@ function getEvolvedAscii() {
 }
 
 function applyStageAnimationTier(domPct) {
+  let nextClass = "";
+  if (domPct >= 100) nextClass = "ascii-anim-king";
+  else if (domPct >= 75) nextClass = "ascii-anim-tier-3";
+  else if (domPct >= 40) nextClass = "ascii-anim-tier-2";
+  else if (domPct >= 15) nextClass = "ascii-anim-tier-1";
+
+  if (nextClass === lastStageAnimClass) return;
+  lastStageAnimClass = nextClass;
+
   const asciiEl = getEl("ascii-stage");
   if (!asciiEl) return;
-
   asciiEl.classList.remove("ascii-sway", "ascii-anim-tier-1", "ascii-anim-tier-2", "ascii-anim-tier-3", "ascii-anim-king");
-  if (domPct >= 100) {
-    asciiEl.classList.add("ascii-anim-king");
-  } else if (domPct >= 75) {
-    asciiEl.classList.add("ascii-anim-tier-3");
-  } else if (domPct >= 40) {
-    asciiEl.classList.add("ascii-anim-tier-2");
-  } else if (domPct >= 15) {
-    asciiEl.classList.add("ascii-anim-tier-1");
-  }
+  if (nextClass) asciiEl.classList.add(nextClass);
 }
 
 function openSetupModal() {
@@ -1006,6 +1045,7 @@ function startGameFromModal() {
   hideEl("title-intro-screen");
   hideEl("setup-modal");
 
+  applyTheme(getPreferredThemeId(), false);
   applySessionUI();
   logMessage(`Welcome to ${getActiveGameVersion()}, ${finalName}. Kitchen is open.`);
   render();
@@ -1901,7 +1941,7 @@ function bindHoldButton(id, actionFn, options = {}) {
   if (!btn) return;
 
   const initialDelay = options.initialDelay ?? 240;
-  const repeatMs = options.repeatMs ?? 45;
+  const repeatMs = options.repeatMs ?? 55;
   const onRelease = options.onRelease ?? null;
 
   let holdDelayTimer = null;
@@ -2420,9 +2460,13 @@ function updateRangeTargetsUI() {
     const el = getEl(`range-target-${i}`);
     if (!el) continue;
     if (i < count) {
-      el.classList.remove("hidden");
-      el.style.left = `${positions[i]}%`;
-    } else {
+      if (el.classList.contains("hidden")) el.classList.remove("hidden");
+      const nextLeft = `${positions[i].toFixed(1)}%`;
+      if (lastRangeTargetLefts[i] !== nextLeft) {
+        lastRangeTargetLefts[i] = nextLeft;
+        el.style.left = nextLeft;
+      }
+    } else if (!el.classList.contains("hidden")) {
       el.classList.add("hidden");
     }
   }
@@ -2528,6 +2572,7 @@ function resolvePlinkoBucket(finalCol) {
 }
 
 function spawnFallingGoldenPretzel() {
+  if (document.hidden) return;
   const sky = getEl("golden-sky-layer");
   if (!sky || !GameState.isGoldenRushActive()) return;
   if (sky.childElementCount >= MAX_FALLING_PRETZELS) return;
@@ -2663,6 +2708,10 @@ function resetRegionalPanelsUI() {
   autoShooterTimer = 0;
   plinkoBall = null;
   lastPlinkoSignature.value = "";
+  lastStageAnimClass = "";
+  lastProjectAffordSig = "";
+  lastRangeTargetLefts = ["", "", "", "", ""];
+  lastCrosshairLeft = "";
   lastModuleTierMap.clear();
   lastTextCache.clear();
 
@@ -2701,7 +2750,7 @@ function applySessionUI() {
   hideEl("title-intro-screen");
   hideEl("setup-modal");
 
-  refreshThemeDropdown(true);
+  applyTheme(getPreferredThemeId(), false);
   refreshRecipeDropdown();
   applySavedSectionCollapseStates();
   if (typeof AchievementManager !== "undefined") {
@@ -2759,10 +2808,10 @@ function completeContinentExpansion() {
   if (conqueringFinalWorld) {
     const fastRunSecs = recordsBeforeReset.runSecs || Math.floor(GameState.bestRunSeconds || 0);
     if (fastRunSecs > 0 && fastRunSecs <= 3600) {
-      applyTheme("diamond-sparkly");
+      applyTheme("diamond-sparkly", true);
       logMessage(`SUB-HOUR EARTH CONQUEST! Unlocked Diamond Sparkly theme & banked +${earnedGold} Golden Pretzels [🥨★]!`);
     } else {
-      applyTheme("gold-solid");
+      applyTheme("gold-solid", true);
       logMessage(`EARTH CONQUERED! Unlocked Solid Gold UI & banked +${earnedGold} Golden Pretzels [🥨★]! Pete Pretzel sent a letter.`);
     }
     if (typeof syncAndFetchLeaderboard === "function") {
@@ -2831,7 +2880,7 @@ function bindControls() {
 
   onClick("btn-prestige-next-loop", () => {
     hideEl("ending-modal");
-    applyTheme(hasSubHourFullRunWin() ? "diamond-sparkly" : "gold-solid");
+    applyTheme(hasSubHourFullRunWin() ? "diamond-sparkly" : "gold-solid", true);
     SoundSystem.playSfx("prestige");
     logMessage("New Earth Prestige Loop started with all Golden Pretzels and themes intact!");
     render();
@@ -2846,6 +2895,13 @@ function bindControls() {
       setText("cloud-menu-msg", "Enter email and password.");
       return;
     }
+    setDisabled("btn-cloud-login", true);
+    setDisabled("btn-cloud-signup", true);
+    const loginTimer = setTimeout(() => {
+      setText("cloud-menu-msg", "Login taking too long—check connection or try again.");
+      setDisabled("btn-cloud-login", false);
+      setDisabled("btn-cloud-signup", false);
+    }, 8000);
     try {
       setText("cloud-menu-msg", "Logging in...");
       const data = await CloudSave.signIn(email, password);
@@ -2855,6 +2911,10 @@ function bindControls() {
       }
     } catch (err) {
       setText("cloud-menu-msg", err.message || "Login failed.");
+    } finally {
+      clearTimeout(loginTimer);
+      setDisabled("btn-cloud-login", false);
+      setDisabled("btn-cloud-signup", false);
     }
   });
 
@@ -2865,6 +2925,8 @@ function bindControls() {
       setText("cloud-menu-msg", "Enter email and a 6+ char password.");
       return;
     }
+    setDisabled("btn-cloud-login", true);
+    setDisabled("btn-cloud-signup", true);
     try {
       setText("cloud-menu-msg", "Creating account...");
       const data = await CloudSave.signUp(email, password);
@@ -2876,6 +2938,9 @@ function bindControls() {
       }
     } catch (err) {
       setText("cloud-menu-msg", err.message || "Sign up failed.");
+    } finally {
+      setDisabled("btn-cloud-login", false);
+      setDisabled("btn-cloud-signup", false);
     }
   });
 
@@ -2904,7 +2969,7 @@ function bindControls() {
     }
   }, {
     initialDelay: 220,
-    repeatMs: 55,
+    repeatMs: 60,
     onRelease: () => GameState.save(true)
   });
 
@@ -2923,7 +2988,7 @@ function bindControls() {
     buySaltMineStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -2946,7 +3011,7 @@ function bindControls() {
     buyWheatFarmStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -2969,7 +3034,7 @@ function bindControls() {
     buyRefineryStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -3019,7 +3084,7 @@ function bindControls() {
   onClick("btn-expand-continent", completeContinentExpansion);
 
   onClick("player-badge", () => {
-    refreshThemeDropdown(true);
+    applyTheme(getPreferredThemeId(), false);
     refreshCloudMenuUI();
     refreshPrestigeMenuUI();
     SoundSystem.refreshControlsUI();
@@ -3067,7 +3132,7 @@ function bindControls() {
   const themeSelect = getEl("select-theme");
   if (themeSelect) {
     themeSelect.addEventListener("change", (e) => {
-      applyTheme(e.target.value);
+      applyTheme(e.target.value, true);
     });
   }
 
@@ -3075,7 +3140,7 @@ function bindControls() {
     buyPromoStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -3097,7 +3162,7 @@ function bindControls() {
     render();
   }, {
     initialDelay: 180,
-    repeatMs: 45
+    repeatMs: 55
   });
 
   bindHoldButton("btn-price-down", (heldSecs) => {
@@ -3109,14 +3174,14 @@ function bindControls() {
     }
   }, {
     initialDelay: 180,
-    repeatMs: 45
+    repeatMs: 55
   });
 
   bindHoldButton("btn-buy-extruder", () => {
     buyExtruderStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -3124,7 +3189,7 @@ function bindControls() {
     buyTruckStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -3147,7 +3212,7 @@ function bindControls() {
     buyDroneStep();
   }, {
     initialDelay: 220,
-    repeatMs: 45,
+    repeatMs: 55,
     onRelease: () => GameState.save(true)
   });
 
@@ -3172,7 +3237,7 @@ function bindControls() {
     buyRangeShooterStep();
   }, {
     initialDelay: 220,
-    repeatMs: 55,
+    repeatMs: 60,
     onRelease: () => GameState.save(true)
   });
 
@@ -3280,6 +3345,7 @@ function checkUnlocks() {
             SoundSystem.playSfx("buy");
             proj.effect();
             card.remove();
+            lastProjectAffordSig = "";
             GameState.save(true);
             render();
           }
@@ -3290,6 +3356,8 @@ function checkUnlocks() {
 }
 
 function render() {
+  if (document.hidden) return;
+
   const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
   const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
   const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
@@ -3318,9 +3386,6 @@ function render() {
   setText("rd-completed-count", completedAvailableCount);
   setText("rd-total-count", availableProjects.length);
 
-  if (GameState.unlockedMinigame) {
-    updateRangeTargetsUI();
-  }
   if (GameState.unlockedRangeShooters) {
     showEl("range-shooter-controls");
     const shooterCount = GameState.rangeShooters || 0;
@@ -3347,11 +3412,15 @@ function render() {
 
   const rushRemainingMs = (GameState.goldenRushEndTime || 0) - Date.now();
   if (rushRemainingMs > 0) {
-    document.body.classList.add("golden-rush-active");
+    if (!document.body.classList.contains("golden-rush-active")) {
+      document.body.classList.add("golden-rush-active");
+    }
     showEl("golden-rush-badge");
     setText("golden-rush-timer", Math.ceil(rushRemainingMs / 1000));
   } else {
-    document.body.classList.remove("golden-rush-active");
+    if (document.body.classList.contains("golden-rush-active")) {
+      document.body.classList.remove("golden-rush-active");
+    }
     hideEl("golden-rush-badge");
   }
 
@@ -3398,10 +3467,7 @@ function render() {
       hideEl("refinery-rate-wrap");
     }
 
-    const toggleSupplyBtn = getEl("btn-toggle-supply");
-    if (toggleSupplyBtn) {
-      toggleSupplyBtn.textContent = `Operations: ${GameState.supplyChainEnabled ? "ON" : "OFF"}`;
-    }
+    setText("btn-toggle-supply", `Operations: ${GameState.supplyChainEnabled ? "ON" : "OFF"}`);
 
     const saltPayroll = getFacilityPayrollPerSec(GameState.saltMines, SALT_BASE_PAYROLL);
     const effectiveSaltMult = saltTier.mult * (GameState.saltRateMult || 1);
@@ -3455,23 +3521,22 @@ function render() {
   const doughStatus = getEl("dough-status");
   if (doughStatus) {
     if (autoBuyerActive) {
-      doughStatus.textContent = "1 lb dough = 1 pretzel";
+      setText("dough-status", "1 lb dough = 1 pretzel");
       doughStatus.style.color = "";
     } else if (GameState.dough < 1 && canAffordDough) {
-      doughStatus.textContent = "Out of dough! Click Buy above to restock.";
+      setText("dough-status", "Out of dough! Click Buy above to restock.");
       doughStatus.style.color = "#e89f48";
     } else if (GameState.dough < 1) {
-      doughStatus.textContent = "OUT OF DOUGH & FUNDS! Use Emergency Maker.";
+      setText("dough-status", "OUT OF DOUGH & FUNDS! Use Emergency Maker.");
       doughStatus.style.color = "#ff6b5b";
     } else {
-      doughStatus.textContent = "1 lb dough = 1 pretzel";
+      setText("dough-status", "1 lb dough = 1 pretzel");
       doughStatus.style.color = "";
     }
   }
 
-  const autoBtn = getEl("btn-toggle-autodough");
-  if (autoBtn && GameState.unlockedAutoDough) {
-    autoBtn.textContent = `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`;
+  if (GameState.unlockedAutoDough) {
+    setText("btn-toggle-autodough", `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`);
   }
 
   const totalPromoPct = Math.round(((1 + (GameState.promoLevel - 1) * 0.20) * promoTier.mult - 1) * 100);
@@ -3505,22 +3570,22 @@ function render() {
   setDisabled("btn-sell-drone", GameState.drones <= 0);
 
   const domPct = getDominanceForStage();
-  const asciiEl = getEl("ascii-stage");
-  if (asciiEl) {
-    const evolved = getEvolvedAscii();
-    if (asciiEl.textContent !== evolved) asciiEl.textContent = evolved;
-    applyStageAnimationTier(domPct);
-  }
+  setText("ascii-stage", getEvolvedAscii());
+  applyStageAnimationTier(domPct);
 
-  Projects.forEach(proj => {
-    const card = getEl(`proj-${proj.id}`);
-    const btn = getEl(`btn-${proj.id}`);
-    if (card && btn) {
-      const unaffordable = !canAffordProject(proj);
-      btn.disabled = unaffordable;
-      card.classList.toggle("locked", unaffordable);
-    }
-  });
+  const affordSig = `${Math.floor(GameState.funds)}:${Math.floor(GameState.researchPoints)}:${currentContIdx}`;
+  if (affordSig !== lastProjectAffordSig) {
+    lastProjectAffordSig = affordSig;
+    Projects.forEach(proj => {
+      const card = getEl(`proj-${proj.id}`);
+      const btn = getEl(`btn-${proj.id}`);
+      if (card && btn) {
+        const unaffordable = !canAffordProject(proj);
+        if (btn.disabled !== unaffordable) btn.disabled = unaffordable;
+        card.classList.toggle("locked", unaffordable);
+      }
+    });
+  }
 }
 
 function animateMinigames(timestamp) {
@@ -3528,88 +3593,94 @@ function animateMinigames(timestamp) {
   const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.05);
   lastAnimTime = timestamp;
 
-  if (document.hidden) {
+  if (document.hidden || !GameState.started) {
     requestAnimationFrame(animateMinigames);
     return;
   }
 
-  if (GameState.started) {
-    if (GameState.unlockedMinigame) {
-      rangeAnimClock += dt;
-      const speedPercentPerSec = 95;
-      crosshairPos += crosshairDir * speedPercentPerSec * dt;
+  const projectsPanel = getEl("panel-projects");
+  const projectsVisible = Boolean(projectsPanel && !projectsPanel.classList.contains("hidden") && !projectsPanel.classList.contains("collapsed"));
 
-      if (crosshairPos >= 94) {
-        crosshairPos = 94;
-        crosshairDir = -1;
-      } else if (crosshairPos <= 6) {
-        crosshairPos = 6;
-        crosshairDir = 1;
-      }
+  if (GameState.unlockedMinigame) {
+    rangeAnimClock += dt;
+    const speedPercentPerSec = 95;
+    crosshairPos += crosshairDir * speedPercentPerSec * dt;
 
+    if (crosshairPos >= 94) {
+      crosshairPos = 94;
+      crosshairDir = -1;
+    } else if (crosshairPos <= 6) {
+      crosshairPos = 6;
+      crosshairDir = 1;
+    }
+
+    if (projectsVisible) {
       const ch = getEl("range-crosshair");
       if (ch) {
-        ch.style.left = `${crosshairPos}%`;
-        ch.style.transform = "translate(-50%, -50%)";
+        const nextLeft = `${crosshairPos.toFixed(1)}%`;
+        if (lastCrosshairLeft !== nextLeft) {
+          lastCrosshairLeft = nextLeft;
+          ch.style.left = nextLeft;
+        }
       }
       updateRangeTargetsUI();
-
-      if (GameState.unlockedRangeShooters && (GameState.rangeShooters || 0) > 0) {
-        autoShooterTimer += dt;
-        const shotInterval = getRangeShooterIntervalSec();
-        if (autoShooterTimer >= shotInterval) {
-          autoShooterTimer %= shotInterval;
-          triggerAutoShooterShot();
-        }
-      } else {
-        autoShooterTimer = 0;
-      }
     }
 
-    if (GameState.unlockedPlinko) {
-      if (!plinkoBall) {
-        const dropperSpeedColsPerSec = 17;
-        plinkoDropperPos += plinkoDropperDir * dropperSpeedColsPerSec * dt;
-        if (plinkoDropperPos >= PLINKO_COLS - 2) {
-          plinkoDropperPos = PLINKO_COLS - 2;
-          plinkoDropperDir = -1;
-        } else if (plinkoDropperPos <= 1) {
-          plinkoDropperPos = 1;
-          plinkoDropperDir = 1;
-        }
+    if (GameState.unlockedRangeShooters && (GameState.rangeShooters || 0) > 0) {
+      autoShooterTimer += dt;
+      const shotInterval = getRangeShooterIntervalSec();
+      if (autoShooterTimer >= shotInterval) {
+        autoShooterTimer %= shotInterval;
+        triggerAutoShooterShot();
+      }
+    } else {
+      autoShooterTimer = 0;
+    }
+  }
+
+  if (GameState.unlockedPlinko && (projectsVisible || plinkoBall)) {
+    if (!plinkoBall) {
+      const dropperSpeedColsPerSec = 17;
+      plinkoDropperPos += plinkoDropperDir * dropperSpeedColsPerSec * dt;
+      if (plinkoDropperPos >= PLINKO_COLS - 2) {
+        plinkoDropperPos = PLINKO_COLS - 2;
+        plinkoDropperDir = -1;
+      } else if (plinkoDropperPos <= 1) {
+        plinkoDropperPos = 1;
+        plinkoDropperDir = 1;
+      }
+      renderPlinkoBoard();
+    } else {
+      plinkoStepTimer += dt;
+      if (plinkoStepTimer >= 0.14) {
+        plinkoStepTimer = 0;
+        plinkoBall.row += 1;
+
+        let leftChance = 0.5;
+        if (plinkoBall.col < 7) leftChance = 0.42;
+        else if (plinkoBall.col > 11) leftChance = 0.58;
+
+        const nudge = Math.random() < leftChance ? -1 : 1;
+        plinkoBall.col = Math.max(1, Math.min(PLINKO_COLS - 2, plinkoBall.col + nudge));
         renderPlinkoBoard();
-      } else {
-        plinkoStepTimer += dt;
-        if (plinkoStepTimer >= 0.14) {
-          plinkoStepTimer = 0;
-          plinkoBall.row += 1;
 
-          let leftChance = 0.5;
-          if (plinkoBall.col < 7) leftChance = 0.42;
-          else if (plinkoBall.col > 11) leftChance = 0.58;
-
-          const nudge = Math.random() < leftChance ? -1 : 1;
-          plinkoBall.col = Math.max(1, Math.min(PLINKO_COLS - 2, plinkoBall.col + nudge));
-          renderPlinkoBoard();
-
-          if (plinkoBall.row >= PLINKO_ROWS) {
-            const landedCol = plinkoBall.col;
-            plinkoBall = null;
-            resolvePlinkoBucket(landedCol);
-            renderPlinkoBoard(true);
-          }
+        if (plinkoBall.row >= PLINKO_ROWS) {
+          const landedCol = plinkoBall.col;
+          plinkoBall = null;
+          resolvePlinkoBucket(landedCol);
+          renderPlinkoBoard(true);
         }
       }
     }
+  }
 
-    const achModal = getEl("achievements-modal");
-    if (achModal && !achModal.classList.contains("hidden") && typeof renderSpinningGlobe === "function") {
-      globeSpinTimer += dt;
-      if (globeSpinTimer >= 0.16) {
-        globeSpinTimer = 0;
-        globeSpinOffset = (globeSpinOffset + 1) % 30;
-        renderSpinningGlobe();
-      }
+  const achModal = getEl("achievements-modal");
+  if (achModal && !achModal.classList.contains("hidden") && typeof renderSpinningGlobe === "function") {
+    globeSpinTimer += dt;
+    if (globeSpinTimer >= 0.25) {
+      globeSpinTimer = 0;
+      globeSpinOffset = (globeSpinOffset + 1) % 30;
+      renderSpinningGlobe();
     }
   }
 
@@ -3619,6 +3690,7 @@ function animateMinigames(timestamp) {
 async function bootGame() {
   initStarfieldBackdrop();
   applyTabPretzelIconAndTitle(0);
+  applyTheme("espresso", false);
 
   if (typeof GameState === "undefined") {
     logMessage("Error: state.js did not load. Check file folder.");
@@ -3635,8 +3707,7 @@ async function bootGame() {
     console.error("Save load error:", err);
   }
 
-  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "espresso";
-  applyTheme(savedTheme);
+  applyTheme(getPreferredThemeId(), false);
   applySavedSectionCollapseStates();
 
   try {
@@ -3644,19 +3715,6 @@ async function bootGame() {
     initSetupPicker();
   } catch (err) {
     console.error("Setup picker error:", err);
-  }
-
-  if (typeof CloudSave !== "undefined") {
-    try {
-      CloudSave.init();
-      const sessionUser = await CloudSave.getSessionUser();
-      refreshCloudMenuUI();
-      if (sessionUser) {
-        await applyCloudUserSave(sessionUser);
-      }
-    } catch (err) {
-      console.error("Cloud sync error:", err);
-    }
   }
 
   if (GameState.started) {
@@ -3679,14 +3737,34 @@ async function bootGame() {
     console.error("Initial render error:", err);
   }
 
+  if (typeof CloudSave !== "undefined") {
+    (async () => {
+      try {
+        CloudSave.init();
+        const sessionUser = await CloudSave.getSessionUser();
+        refreshCloudMenuUI();
+        if (sessionUser) {
+          await applyCloudUserSave(sessionUser);
+        } else if (typeof syncAndFetchLeaderboard === "function") {
+          syncAndFetchLeaderboard(true);
+        }
+      } catch (err) {
+        console.error("Cloud sync error:", err);
+      } finally {
+        applyTheme(getPreferredThemeId(), false);
+      }
+    })();
+  }
+
   requestAnimationFrame(animateMinigames);
 
   let subsecondAccumulator = 0;
+  let slowCheckCounter = 0;
 
   setInterval(() => {
     if (!GameState.started) return;
 
-    subsecondAccumulator += 0.1;
+    subsecondAccumulator += 0.2;
     if (subsecondAccumulator >= 1) {
       const wholeSecs = Math.floor(subsecondAccumulator);
       subsecondAccumulator -= wholeSecs;
@@ -3697,7 +3775,7 @@ async function bootGame() {
     let tickRefinedDough = 0;
 
     if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
-      const tickPayroll = getSupplyPayrollPerSec() / 10;
+      const tickPayroll = getSupplyPayrollPerSec() / 5;
       if (tickPayroll <= 0 || GameState.funds >= tickPayroll) {
         if (tickPayroll > 0) {
           GameState.funds -= tickPayroll;
@@ -3708,11 +3786,11 @@ async function bootGame() {
         const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
         const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
 
-        GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) / 10;
-        GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) / 10;
+        GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) / 5;
+        GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) / 5;
 
         if (GameState.refineries > 0) {
-          const maxRefineCapacity = (GameState.refineries * REFINERY_BASE_RATE * refineryMult) / 10;
+          const maxRefineCapacity = (GameState.refineries * REFINERY_BASE_RATE * refineryMult) / 5;
           const actualRefined = Math.min(maxRefineCapacity, GameState.salt, GameState.wheat);
           if (actualRefined > 0) {
             GameState.salt -= actualRefined;
@@ -3733,7 +3811,7 @@ async function bootGame() {
     const extruderMult = getModuleTierInfo(GameState.extruders).mult;
     const rawBakeRate = GameState.extruders * GameState.extruderSpeed * extruderMult;
     if (rawBakeRate > 0) {
-      const requestedTickBake = rawBakeRate / 10;
+      const requestedTickBake = rawBakeRate / 5;
       const fromExistingDough = Math.min(GameState.dough, requestedTickBake);
       if (fromExistingDough > 0) {
         bakePretzels(fromExistingDough);
@@ -3748,7 +3826,7 @@ async function bootGame() {
       const maxDelivery = getEffectiveMaxDelivery();
       const demandFactor = GameState.demand / 100;
       const netPrice = getEffectivePriceSafe();
-      pendingSales += (maxDelivery * demandFactor) / 10;
+      pendingSales += (maxDelivery * demandFactor) / 5;
 
       if (pendingSales >= 1) {
         const wantToSell = Math.floor(pendingSales);
@@ -3777,17 +3855,21 @@ async function bootGame() {
     const rawWindowRate = totalWindowCash / (windowMs / 1000);
     liveCashPerSec = (liveCashPerSec * 0.85) + (rawWindowRate * 0.15);
 
-    if (GameState.isGoldenRushActive() && Math.random() < 0.025) {
+    if (GameState.isGoldenRushActive() && Math.random() < 0.05) {
       spawnFallingGoldenPretzel();
     }
 
-    checkUnlocks();
-    if (typeof AchievementManager !== "undefined") {
-      AchievementManager.checkAll();
-      AchievementManager.updateButtonCount();
+    slowCheckCounter += 1;
+    if (slowCheckCounter >= 3) {
+      slowCheckCounter = 0;
+      checkUnlocks();
+      if (typeof AchievementManager !== "undefined") {
+        AchievementManager.checkAll();
+        AchievementManager.updateButtonCount();
+      }
     }
     render();
-  }, 100);
+  }, 200);
 
   setInterval(() => {
     if (GameState.started) {
