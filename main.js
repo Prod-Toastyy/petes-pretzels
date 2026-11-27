@@ -343,7 +343,6 @@ function initStarfieldBackdrop() {
       star.style.top = `${((i * 29.3) % 94) + 2.5}%`;
       star.style.fontSize = i % 3 === 0 ? "13px" : i % 2 === 0 ? "10px" : "8px";
       star.style.opacity = String(0.35 + ((i % 5) * 0.14));
-      star.style.animationDelay = `${((i * 0.37) % 4.5).toFixed(2)}s`;
       layer.appendChild(star);
     }
   }
@@ -888,13 +887,22 @@ function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "", asciiElId
   lastModuleTierMap.set(boxId, info.tier);
 
   if (box) {
-    box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
-    if (info.tier > 0) box.classList.add(`tier-${info.tier}`);
+    const desiredTierClass = info.tier > 0 ? `tier-${info.tier}` : "";
+    if (!desiredTierClass) {
+      box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
+    } else if (!box.classList.contains(desiredTierClass)) {
+      box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
+      box.classList.add(desiredTierClass);
+    }
   }
   if (badgeId) setText(badgeId, info.label);
   if (nextId) setText(nextId, info.next ? `Next: ${prefix}${info.next}` : "MAX TIER");
   if (asciiElId && artKey) {
-    setText(asciiElId, getModuleAsciiStage(artKey, info.tier));
+    const nextArt = getModuleAsciiStage(artKey, info.tier);
+    if (lastTextCache.get(`ascii:${asciiElId}`) !== nextArt) {
+      lastTextCache.set(`ascii:${asciiElId}`, nextArt);
+      setText(asciiElId, nextArt);
+    }
   }
   return info;
 }
@@ -3519,6 +3527,11 @@ function animateMinigames(timestamp) {
   if (lastAnimTime === null) lastAnimTime = timestamp;
   const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.05);
   lastAnimTime = timestamp;
+
+  if (document.hidden) {
+    requestAnimationFrame(animateMinigames);
+    return;
+  }
 
   if (GameState.started) {
     if (GameState.unlockedMinigame) {

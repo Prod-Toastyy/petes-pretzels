@@ -307,15 +307,15 @@ const GameState = {
 
   recordRunProgress(addSeconds = 0) {
     this.syncHighestContinent();
-    if (addSeconds > 0) {
-      this.elapsedRunSeconds = (this.elapsedRunSeconds || 0) + addSeconds;
-      this.totalPlaySecondsAllRuns = (this.totalPlaySecondsAllRuns || 0) + addSeconds;
-    }
     const runPretzels = Math.floor(this.pretzels || 0);
     if (runPretzels > (this.bestRunPretzels || 0)) {
       this.bestRunPretzels = runPretzels;
     }
-    this.syncPersistentHighScores();
+    if (addSeconds > 0) {
+      this.elapsedRunSeconds = (this.elapsedRunSeconds || 0) + addSeconds;
+      this.totalPlaySecondsAllRuns = (this.totalPlaySecondsAllRuns || 0) + addSeconds;
+      this.syncPersistentHighScores();
+    }
   },
 
   finalizeRunRecords() {
@@ -539,3 +539,4 @@ const GameState = {
     }
   }
 };
+

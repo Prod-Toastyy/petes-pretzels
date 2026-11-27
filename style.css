@@ -1,3 +1,5 @@
+### `style.css`
+```css
 :root {
   --bg-page: #181412;
   --bg-surface: #221c19;
@@ -514,13 +516,7 @@ header,
   position: fixed;
   pointer-events: none;
   color: var(--accent);
-  text-shadow: 0 0 8px rgba(255, 210, 63, 0.45);
-  animation: starDotTwinkle 3.6s ease-in-out infinite alternate;
-}
-
-@keyframes starDotTwinkle {
-  0% { opacity: 0.25; transform: scale(0.9); }
-  100% { opacity: 0.95; transform: scale(1.15); }
+  text-shadow: 0 0 6px rgba(255, 210, 63, 0.35);
 }
 
 body.theme-light-mode .starfield-layer {
@@ -607,15 +603,6 @@ body.theme-light-mode .starfield-layer {
     rgba(0, 0, 0, 0.24) 3px
   );
   opacity: 0.75;
-}
-
-@keyframes crtSubtleFlicker {
-  0%, 100% { opacity: 0.72; }
-  50% { opacity: 0.86; }
-}
-
-#ascii-stage::after {
-  animation: crtSubtleFlicker 4.5s steps(2, end) infinite;
 }
 
 body.theme-light-mode #ascii-stage::after,
@@ -2048,4 +2035,3 @@ button.sell-btn:hover:not(:disabled) {
     line-height: 1.08;
   }
 }
-```[cite: 8]
