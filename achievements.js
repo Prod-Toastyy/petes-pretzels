@@ -197,7 +197,7 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
-const LEADERBOARD_VERSION = "BETA.10";
+const LEADERBOARD_VERSION = "BETA.11";
 const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
 const LEADERBOARD_MAX_ROWS = 10;
 const LEADERBOARD_SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -239,62 +239,33 @@ function getLeaderboardClient() {
   return null;
 }
 
-function readOldShops() {
-  try {
-    const raw = localStorage.getItem(OLD_SHOPS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function recordCurrentShopSnapshot() {
-  if (typeof GameState === "undefined" || !GameState.started) return readOldShops();
+function getCurrentShopSnapshot() {
+  if (typeof GameState === "undefined" || !GameState.started) return null;
   const shopName = (GameState.playerName || "").trim() || "Unnamed Pretzel Shop";
   const slug = shopName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "shop";
   const pretzelsAllRuns = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
-    ? Math.floor(GameState.getTotalLifetimePretzelsAllRuns())
-    : Math.floor((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0));
+    ? Math.max(0, Math.floor(GameState.getTotalLifetimePretzelsAllRuns()))
+    : Math.max(0, Math.floor((GameState.lifetimePretzelsAllRuns || 0) + (GameState.pretzels || 0)));
 
   const hasCompletedFullRun = Boolean(GameState.completedFullRun);
   const bestWinSeconds = (hasCompletedFullRun && (GameState.bestRunSeconds || 0) > 0)
     ? Math.floor(GameState.bestRunSeconds)
     : null;
 
-  const shops = readOldShops();
-  const existingIdx = shops.findIndex(s => s.shopKey === slug || s.shopName === shopName);
+  const entry = {
+    shopKey: slug,
+    shopName,
+    pretzelsAllRuns,
+    completedFullRun: hasCompletedFullRun,
+    bestWinSeconds
+  };
 
-  if (existingIdx >= 0) {
-    const prev = shops[existingIdx];
-    shops[existingIdx] = {
-      shopKey: slug,
-      shopName,
-      pretzelsAllRuns: Math.max(Number(prev.pretzelsAllRuns) || 0, pretzelsAllRuns),
-      completedFullRun: Boolean(prev.completedFullRun || hasCompletedFullRun),
-      bestWinSeconds: (hasCompletedFullRun && Number(prev.bestWinSeconds) > 0 && bestWinSeconds > 0)
-        ? Math.min(Number(prev.bestWinSeconds), bestWinSeconds)
-        : (bestWinSeconds || null)
-    };
-  } else {
-    shops.push({
-      shopKey: slug,
-      shopName,
-      pretzelsAllRuns,
-      completedFullRun: hasCompletedFullRun,
-      bestWinSeconds
-    });
-  }
-
-  shops.sort((a, b) => (Number(b.pretzelsAllRuns) || 0) - (Number(a.pretzelsAllRuns) || 0));
-  const trimmed = shops.slice(0, LEADERBOARD_MAX_ROWS);
   try {
-    localStorage.setItem(OLD_SHOPS_KEY, JSON.stringify(trimmed));
+    localStorage.setItem(OLD_SHOPS_KEY, JSON.stringify([entry]));
   } catch (e) {
-    console.error("Failed to save old shops:", e);
+    console.error("Failed to save shop snapshot:", e);
   }
-  return trimmed;
+  return entry;
 }
 
 function renderSpinningGlobe() {
@@ -378,29 +349,30 @@ async function syncAndFetchLeaderboard(force = false) {
   leaderboardFetching = true;
 
   try {
-    const savedShops = recordCurrentShopSnapshot();
+    const currentShop = getCurrentShopSnapshot();
     const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user) && Boolean(CloudSave.client);
 
-    if (isSignedIn) {
+    if (isSignedIn && currentShop) {
       const session = await CloudSave.refreshActiveSession();
       if (session && session.user) {
-        for (const shop of savedShops) {
-          if ((shop.pretzelsAllRuns || 0) > 0 || (shop.completedFullRun && (shop.bestWinSeconds || 0) > 0)) {
-            const { error: upsertErr } = await CloudSave.client
-              .from("shop_leaderboard")
-              .upsert({
-                user_id: session.user.id,
-                shop_key: shop.shopKey,
-                shop_name: shop.shopName,
-                pretzels_all_runs: Math.floor(shop.pretzelsAllRuns || 0),
-                completed_full_run: Boolean(shop.completedFullRun),
-                best_win_seconds: (shop.completedFullRun && shop.bestWinSeconds) ? Math.floor(shop.bestWinSeconds) : null,
-                game_version: LEADERBOARD_VERSION,
-                updated_at: new Date().toISOString()
-              }, { onConflict: "user_id,shop_key" });
-            if (upsertErr) console.error("Leaderboard upsert error:", upsertErr);
-          }
-        }
+        await CloudSave.client
+          .from("shop_leaderboard")
+          .delete()
+          .eq("user_id", session.user.id);
+
+        const { error: upsertErr } = await CloudSave.client
+          .from("shop_leaderboard")
+          .upsert({
+            user_id: session.user.id,
+            shop_key: currentShop.shopKey,
+            shop_name: currentShop.shopName,
+            pretzels_all_runs: Math.max(0, Math.floor(currentShop.pretzelsAllRuns || 0)),
+            completed_full_run: Boolean(currentShop.completedFullRun),
+            best_win_seconds: (currentShop.completedFullRun && currentShop.bestWinSeconds) ? Math.floor(currentShop.bestWinSeconds) : null,
+            game_version: LEADERBOARD_VERSION,
+            updated_at: new Date().toISOString()
+          }, { onConflict: "user_id" });
+        if (upsertErr) console.error("Leaderboard upsert error:", upsertErr);
       }
     }
 
@@ -428,14 +400,14 @@ async function syncAndFetchLeaderboard(force = false) {
       } else if (Array.isArray(data)) {
         lastLeaderboardSyncByMode[activeLeaderboardMode] = Date.now();
         const currentUserId = (typeof CloudSave !== "undefined" && CloudSave.user) ? CloudSave.user.id : null;
-        const myKeys = new Set(savedShops.map(s => s.shopKey));
         liveLeaderboardRows = data.map(row => ({
+          userId: row.user_id || "",
           shopKey: row.shop_key || "",
           shopName: row.shop_name || "Unnamed Pretzel Shop",
           pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
           completedFullRun: Boolean(row.completed_full_run),
           bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
-          isUser: Boolean(currentUserId && row.user_id === currentUserId && myKeys.has(row.shop_key))
+          isUser: Boolean(currentUserId && row.user_id === currentUserId)
         }));
       }
     }
@@ -453,39 +425,37 @@ function renderLeaderboard() {
 
   const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
   const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user);
-  const savedShops = isSignedIn ? recordCurrentShopSnapshot() : [];
+  const currentShop = isSignedIn ? getCurrentShopSnapshot() : null;
+  const currentUserId = isSignedIn ? CloudSave.user.id : null;
 
-  const byKey = new Map();
+  const byAccount = new Map();
 
   for (const row of liveLeaderboardRows) {
-    const k = `${row.shopKey || row.shopName}:${row.isUser ? "me" : "other"}`;
-    byKey.set(k, { ...row });
-  }
-
-  if (isSignedIn) {
-    for (const shop of savedShops) {
-      const k = `${shop.shopKey}:me`;
-      const existing = byKey.get(k);
-      if (!existing) {
-        byKey.set(k, { ...shop, isUser: true });
-      } else {
-        const completedRun = Boolean(existing.completedFullRun || shop.completedFullRun);
-        byKey.set(k, {
-          ...existing,
-          pretzelsAllRuns: Math.max(Number(existing.pretzelsAllRuns) || 0, Number(shop.pretzelsAllRuns) || 0),
-          completedFullRun: completedRun,
-          bestWinSeconds: completedRun
-            ? ((Number(existing.bestWinSeconds) > 0 && Number(shop.bestWinSeconds) > 0)
-                ? Math.min(Number(existing.bestWinSeconds), Number(shop.bestWinSeconds))
-                : (Number(shop.bestWinSeconds) > 0 ? Number(shop.bestWinSeconds) : (Number(existing.bestWinSeconds) > 0 ? Number(existing.bestWinSeconds) : null)))
-            : null,
-          isUser: true
-        });
-      }
+    if (isSignedIn && currentShop && row.isUser) {
+      byAccount.set(currentUserId, {
+        ...row,
+        shopKey: currentShop.shopKey,
+        shopName: currentShop.shopName,
+        pretzelsAllRuns: currentShop.pretzelsAllRuns,
+        completedFullRun: currentShop.completedFullRun,
+        bestWinSeconds: currentShop.bestWinSeconds,
+        isUser: true
+      });
+    } else {
+      const k = row.userId || `${row.shopKey}:${row.shopName}`;
+      byAccount.set(k, { ...row });
     }
   }
 
-  let entries = Array.from(byKey.values());
+  if (isSignedIn && currentShop && currentUserId && !byAccount.has(currentUserId)) {
+    byAccount.set(currentUserId, {
+      ...currentShop,
+      userId: currentUserId,
+      isUser: true
+    });
+  }
+
+  let entries = Array.from(byAccount.values());
 
   if (activeLeaderboardMode === "time") {
     entries = entries.filter(e => e.completedFullRun && e.bestWinSeconds !== null && e.bestWinSeconds > 0);

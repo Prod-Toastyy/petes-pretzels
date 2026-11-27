@@ -1,4 +1,4 @@
-const GAME_VERSION = "BETA.10";
+const GAME_VERSION = "BETA.11";
 const SAVE_KEY = "petes_pretzels_save_v4";
 const HIGH_SCORES_KEY = "petes_pretzels_high_scores_v1";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
@@ -185,10 +185,12 @@ const GameState = {
       const parsed = JSON.parse(raw);
       return {
         totalPlaySecondsAllRuns: Math.max(0, Math.floor(Number(parsed.totalPlaySecondsAllRuns) || 0)),
-        bestRunSeconds: 0, // Speedrun reset for BETA.10
+        bestRunSeconds: (parsed.completedFullRun && Number(parsed.bestRunSeconds) > 0)
+          ? Math.floor(Number(parsed.bestRunSeconds))
+          : 0,
         bestRunPretzels: Math.max(0, Math.floor(Number(parsed.bestRunPretzels) || 0)),
         lifetimePretzelsBanked: Math.max(0, Math.floor(Number(parsed.lifetimePretzelsBanked) || 0)),
-        completedFullRun: false
+        completedFullRun: Boolean(parsed.completedFullRun)
       };
     } catch (e) {
       return { ...DEFAULT_HIGH_SCORES };
@@ -234,9 +236,8 @@ const GameState = {
   },
 
   getTotalLifetimePretzelsAllRuns() {
-    const hs = this.readHighScores();
-    const banked = Math.max(this.lifetimePretzelsAllRuns || 0, hs.lifetimePretzelsBanked || 0);
-    const currentRun = Math.floor(this.pretzels || 0);
+    const banked = Math.max(0, Math.floor(Number(this.lifetimePretzelsAllRuns) || 0));
+    const currentRun = Math.max(0, Math.floor(Number(this.pretzels) || 0));
     return banked + currentRun;
   },
 
@@ -456,7 +457,6 @@ const GameState = {
       }
     }
     this.gameVersion = GAME_VERSION;
-    // Reset speedrun time for BETA.10 while keeping pretzel high scores
     this.bestRunSeconds = 0;
     this.completedFullRun = false;
 
@@ -528,19 +528,11 @@ const GameState = {
   },
 
   reset(syncCloud = false) {
-    this.syncPersistentHighScores();
-    const preservedScores = this.readHighScores();
-
     localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem(HIGH_SCORES_KEY);
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
     this.gameVersion = GAME_VERSION;
-
-    this.totalPlaySecondsAllRuns = preservedScores.totalPlaySecondsAllRuns;
-    this.completedFullRun = false;
-    this.bestRunSeconds = 0;
-    this.bestRunPretzels = preservedScores.bestRunPretzels;
-    this.lifetimePretzelsAllRuns = preservedScores.lifetimePretzelsBanked;
-    this.writeHighScores(preservedScores);
+    this.writeHighScores({ ...DEFAULT_HIGH_SCORES });
 
     if (syncCloud && typeof CloudSave !== "undefined" && CloudSave.user) {
       CloudSave.pushToCloud(this.getSnapshot());

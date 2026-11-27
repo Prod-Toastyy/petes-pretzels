@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pete's Pretzels</title>
+  <link rel="icon" type="image/png" href="pretzel.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Lora:wght@600&display=swap" rel="stylesheet">
@@ -14,7 +15,7 @@
 
   <!-- Title Intro Screen -->
   <div id="title-intro-screen" class="intro-screen">
-    <button type="button" id="intro-pretzel-trigger" class="intro-art-btn" aria-label="click pretzel to start" onclick="var intro=document.getElementById('title-intro-screen');if(intro)intro.classList.add('hidden');if(typeof initSetupPicker==='function')initSetupPicker();var m=document.getElementById('setup-modal');if(m)m.classList.remove('hidden');">
+    <button type="button" id="intro-pretzel-trigger" class="intro-art-btn" aria-label="click pretzel to start">
       <pre class="intro-ascii-art"> ______   ______   _________  ______   ______       ______   ______    ______   _________  ______  ______   __       ______      
 /_____/\ /_____/\ /________/\/_____/\ /_____/\     /_____/\ /_____/\  /_____/\ /________/\/_____/\/_____/\ /_/\     /_____/\     
 \:::_ \ \\::::_\/_\__.::.__\/\::::_\/_\::::_\/_    \:::_ \ \\:::_ \ \ \::::_\/_\__.::.__\/\:::__\/\::::_\/_\:\ \    \::::_\/_    
@@ -34,49 +35,20 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA 10 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
+    <div class="intro-bottom-version">BETA.11 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
   </div>
 
   <!-- Start Setup -->
   <div id="setup-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <label for="input-player-name">Shop Name</label>
-      <input type="text" id="input-player-name" maxlength="28" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();window.forceStartGame();}">
+      <input type="text" id="input-player-name" maxlength="28" autocomplete="off">
 
       <div id="ascii-picker-grid" class="ascii-grid"></div>
 
-      <button type="button" id="btn-start-game" class="primary-btn" onclick="window.forceStartGame()">Start</button>
+      <button type="button" id="btn-start-game" class="primary-btn">Start</button>
     </div>
   </div>
-
-  <!-- Inline Failsafe Starter -->
-  <script>
-    window.forceStartGame = function() {
-      var input = document.getElementById("input-player-name");
-      var playerName = (input && input.value.trim()) ? input.value.trim() : "Baker";
-
-      if (typeof window.startGameFromModal === "function") {
-        window.startGameFromModal();
-        return;
-      }
-
-      if (typeof GameState !== "undefined") {
-        GameState.playerName = playerName;
-        GameState.started = true;
-        if (!GameState.runStartTime) GameState.runStartTime = Date.now();
-        if (typeof GameState.save === "function") GameState.save(true);
-      }
-
-      var badge = document.getElementById("display-player-name");
-      if (badge) badge.textContent = playerName;
-
-      var intro = document.getElementById("title-intro-screen");
-      if (intro) intro.classList.add("hidden");
-
-      var modal = document.getElementById("setup-modal");
-      if (modal) modal.classList.add("hidden");
-    };
-  </script>
 
   <!-- Final World Ending & Pete Pretzel Letter Modal -->
   <div id="ending-modal" class="modal-overlay hidden">
@@ -361,7 +333,7 @@
       <div class="row-items section-body">
 
         <div class="module-box">
-          <button id="btn-bake">[🥨] Bake Pretzel (+<span id="click-power">1</span>)</button>
+          <button id="btn-bake">[🥨] Bake Pretzel [B] (+<span id="click-power">1</span>)</button>
           <p class="big-stat-line">Unsold Inventory: <strong id="inventory" class="big-stat-num">0</strong></p>
           <p id="income-rate-line" class="income-rate-line hidden">Cash Flow: <strong><span id="income-sign">+$</span><span id="income-per-sec">0.00</span>/sec</strong></p>
           <div id="recipe-box" class="recipe-row hidden">
@@ -550,7 +522,7 @@
         <div class="module-box hidden" id="panel-plinko">
           <p><strong>[🎰] ASCII Pretzel Plinko</strong></p>
           <pre id="plinko-board" class="plinko-board"></pre>
-          <button id="btn-drop-plinko">Drop Pretzel (50 Inv)</button>
+          <button id="btn-drop-plinko">Drop Pretzel [E] (50 Inv)</button>
           <p class="subtext" id="plinko-feedback">[X] Burnt | [🌾] Dough | [★] 30s Rush</p>
         </div>
 

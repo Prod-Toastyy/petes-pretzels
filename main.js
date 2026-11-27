@@ -1,5 +1,8 @@
 const THEME_STORAGE_KEY = "petes_pretzels_theme";
 const COLLAPSED_SECTIONS_KEY = "petes_pretzels_collapsed_sections_v1";
+const SHOOTING_STAR_INTERVAL_MS = 30 * 60 * 1000;
+const MAX_CLICK_POPS = 18;
+const STARFIELD_STAR_COUNT = 46;
 
 const THEMES_CATALOG = [
   { id: "espresso", name: "Warm Espresso (Default)", minContinent: 0, requiresGoldUi: false, requiresAllAchievements: false, requiresSubHourWin: false },
@@ -43,8 +46,18 @@ const COLLAPSIBLE_SECTION_IDS = [
 
 const domCache = new Map();
 const lastTextCache = new Map();
+const lastModuleTierMap = new Map();
 const lastPlinkoSignature = { value: "" };
 let lastThemeDropdownSignature = "";
+let lastDocumentTitle = "";
+let lastPointerPos = {
+  x: typeof window !== "undefined" ? Math.round(window.innerWidth * 0.5) : 400,
+  y: typeof window !== "undefined" ? Math.round(window.innerHeight * 0.5) : 300
+};
+
+function getActiveGameVersion() {
+  return typeof GAME_VERSION !== "undefined" ? GAME_VERSION : "BETA.11";
+}
 
 function getEl(id) {
   if (domCache.has(id)) {
@@ -87,6 +100,95 @@ function onClick(id, handler) {
   if (el) el.addEventListener("click", handler);
 }
 
+function applyTabPretzelIconAndTitle(pretzelCount = 0) {
+  let linkEl = document.querySelector("link[rel~='icon']");
+  if (!linkEl) {
+    linkEl = document.createElement("link");
+    linkEl.rel = "icon";
+    document.head.appendChild(linkEl);
+  }
+  linkEl.type = "image/png";
+  linkEl.href = "pretzel.png";
+
+  const countNum = Math.max(0, Math.floor(Number(pretzelCount) || 0));
+  const nextTitle = `(${countNum.toLocaleString()}) Pete's Pretzels`;
+  if (nextTitle !== lastDocumentTitle) {
+    lastDocumentTitle = nextTitle;
+    document.title = nextTitle;
+  }
+}
+
+function initStarfieldBackdrop() {
+  let layer = document.getElementById("bakery-starfield");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "bakery-starfield";
+    layer.className = "starfield-layer starfield-prevalent";
+    document.body.prepend(layer);
+  } else {
+    layer.classList.add("starfield-layer", "starfield-prevalent");
+  }
+
+  if (layer.childElementCount === 0) {
+    const starGlyphs = ["✦", "✧", "·", "*"];
+    for (let i = 0; i < STARFIELD_STAR_COUNT; i++) {
+      const star = document.createElement("span");
+      star.className = "starfield-dot";
+      star.textContent = starGlyphs[i % starGlyphs.length];
+      star.style.left = `${((i * 19.7) % 97) + 1.5}%`;
+      star.style.top = `${((i * 29.3) % 94) + 2.5}%`;
+      star.style.fontSize = i % 3 === 0 ? "13px" : i % 2 === 0 ? "10px" : "8px";
+      star.style.opacity = String(0.35 + ((i % 5) * 0.14));
+      star.style.animationDelay = `${((i * 0.37) % 4.5).toFixed(2)}s`;
+      layer.appendChild(star);
+    }
+  }
+}
+
+function spawnRareShootingStar(announce = true) {
+  const sky = getEl("golden-sky-layer") || document.body;
+  const star = document.createElement("div");
+  star.className = "shooting-star";
+
+  const startX = Math.round(window.innerWidth * (0.15 + Math.random() * 0.5));
+  const startY = Math.round(window.innerHeight * (0.06 + Math.random() * 0.25));
+  star.style.left = `${startX}px`;
+  star.style.top = `${startY}px`;
+
+  sky.appendChild(star);
+  if (announce && typeof GameState !== "undefined" && GameState.started) {
+    logMessage("✦ A rare shooting star streaked across the bakery sky!");
+  }
+
+  setTimeout(() => {
+    if (star.parentNode) star.remove();
+  }, 1250);
+}
+
+function spawnSubtleClickPop(_anchorEl, labelText = "+1") {
+  const sky = getEl("golden-sky-layer") || document.body;
+  const existingPops = sky.querySelectorAll(".subtle-click-pop");
+  if (existingPops.length >= MAX_CLICK_POPS) {
+    existingPops[0].remove();
+  }
+
+  const offsetX = Math.round((Math.random() - 0.5) * 28) + 14;
+  const offsetY = Math.round((Math.random() - 0.5) * 18) - 10;
+  const x = Math.max(12, Math.min(window.innerWidth - 60, lastPointerPos.x + offsetX));
+  const y = Math.max(12, Math.min(window.innerHeight - 24, lastPointerPos.y + offsetY));
+
+  const pop = document.createElement("span");
+  pop.className = "subtle-click-pop wow-damage-pop";
+  pop.textContent = labelText.includes("🥨") ? labelText : `🥨 ${labelText}`;
+  pop.style.left = `${x}px`;
+  pop.style.top = `${y}px`;
+  sky.appendChild(pop);
+
+  setTimeout(() => {
+    if (pop.parentNode) pop.remove();
+  }, 780);
+}
+
 function hasAllAchievementsUnlocked() {
   if (typeof AchievementManager === "undefined" || typeof ACHIEVEMENTS_LIST === "undefined") return false;
   return AchievementManager.getUnlockedIds().length >= ACHIEVEMENTS_LIST.length;
@@ -118,6 +220,87 @@ function writeCollapsedSections(mapObj) {
   }
 }
 
+function applyModalSectionCollapseUI(targetKey, collapsed) {
+  const isCollapsed = Boolean(collapsed);
+  if (targetKey === "leaderboard") {
+    const panel = getEl("leaderboard-panel") || document.querySelector(".leaderboard-panel");
+    const list = getEl("leaderboard-list");
+    const btn = getEl("btn-collapse-leaderboard");
+    if (panel) panel.classList.toggle("collapsed", isCollapsed);
+    if (list) list.classList.toggle("hidden", isCollapsed);
+    if (btn) {
+      btn.textContent = isCollapsed ? "▸" : "▾";
+      btn.setAttribute("aria-expanded", String(!isCollapsed));
+    }
+  } else if (targetKey === "achievements") {
+    const grid = getEl("achievements-grid");
+    const btn = getEl("btn-collapse-achievements");
+    if (grid) grid.classList.toggle("collapsed", isCollapsed);
+    if (grid) grid.classList.toggle("hidden", isCollapsed);
+    if (btn) {
+      btn.textContent = isCollapsed ? "▸" : "▾";
+      btn.setAttribute("aria-expanded", String(!isCollapsed));
+    }
+  }
+}
+
+function ensureTrophyRoomCollapsibles() {
+  const lbList = getEl("leaderboard-list");
+  if (lbList && !getEl("btn-collapse-leaderboard")) {
+    const lbHeader = lbList.parentElement?.querySelector(".row-header");
+    if (lbHeader) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = "btn-collapse-leaderboard";
+      btn.className = "section-collapse-btn";
+      btn.title = "Collapse or expand Leaderboard";
+      btn.setAttribute("aria-expanded", "true");
+      btn.textContent = "▾";
+      btn.addEventListener("click", () => {
+        const mapObj = readCollapsedSections();
+        const next = !Boolean(mapObj.modal_leaderboard);
+        mapObj.modal_leaderboard = next;
+        writeCollapsedSections(mapObj);
+        applyModalSectionCollapseUI("leaderboard", next);
+      });
+      lbHeader.appendChild(btn);
+    }
+  }
+
+  const achGrid = getEl("achievements-grid");
+  if (achGrid && !getEl("btn-collapse-achievements")) {
+    let achHeader = getEl("achievements-header");
+    if (!achHeader && achGrid.parentElement) {
+      achHeader = document.createElement("div");
+      achHeader.id = "achievements-header";
+      achHeader.className = "row-header";
+      achHeader.style.marginTop = "12px";
+      achHeader.style.marginBottom = "8px";
+      achHeader.innerHTML = `<h3>[🏆] Achievements</h3>`;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = "btn-collapse-achievements";
+      btn.className = "section-collapse-btn";
+      btn.title = "Collapse or expand Achievements";
+      btn.setAttribute("aria-expanded", "true");
+      btn.textContent = "▾";
+      btn.addEventListener("click", () => {
+        const mapObj = readCollapsedSections();
+        const next = !Boolean(mapObj.modal_achievements);
+        mapObj.modal_achievements = next;
+        writeCollapsedSections(mapObj);
+        applyModalSectionCollapseUI("achievements", next);
+      });
+      achHeader.appendChild(btn);
+      achGrid.parentElement.insertBefore(achHeader, achGrid);
+    }
+  }
+
+  const mapObj = readCollapsedSections();
+  applyModalSectionCollapseUI("leaderboard", Boolean(mapObj.modal_leaderboard));
+  applyModalSectionCollapseUI("achievements", Boolean(mapObj.modal_achievements));
+}
+
 function setSectionCollapsed(sectionId, collapsed, persist = true) {
   const sec = getEl(sectionId);
   const btn = getEl(`btn-collapse-${sectionId}`);
@@ -139,6 +322,7 @@ function applySavedSectionCollapseStates() {
   COLLAPSIBLE_SECTION_IDS.forEach(id => {
     setSectionCollapsed(id, Boolean(stateMap[id]), false);
   });
+  ensureTrophyRoomCollapsibles();
 }
 
 function toggleSectionCollapsed(sectionId) {
@@ -183,6 +367,17 @@ function triggerLevel25Juice(elementId) {
   } else {
     triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.45, 14);
   }
+}
+
+function triggerModuleTierGlow(boxId) {
+  const box = getEl(boxId);
+  if (!box) return;
+  box.classList.remove("tier-up-flash");
+  void box.offsetWidth;
+  box.classList.add("tier-up-flash");
+  setTimeout(() => {
+    if (box.isConnected) box.classList.remove("tier-up-flash");
+  }, 1150);
 }
 
 function getUnlockedThemeTier() {
@@ -278,9 +473,9 @@ function refreshPrestigeMenuUI() {
   const descEl = getEl("prestige-menu-desc");
   if (descEl) {
     if (canClaimPending) {
-      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America while keeping unlocked themes. <strong>Full Wipe</strong> erases run data while keeping best times &amp; lifetime stats.`;
+      descEl.innerHTML = `Territory complete! <strong>Prestige</strong> claims +${pendingGold} pending Golden Pretzels (${totalAfter} total) and restarts in North America while keeping unlocked themes. <strong>Full Wipe</strong> completely resets your run, lifetime pretzel count, and leaderboard score.`;
     } else {
-      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash), unlocked themes &amp; achievements. <strong>Full Wipe</strong> erases run data while keeping best times &amp; lifetime stats.`;
+      descEl.innerHTML = `<strong>Prestige</strong> restarts in North America while keeping all ${currentGold.toLocaleString()} Golden Pretzels (+${currentGold * 25}% cash), unlocked themes &amp; achievements. <strong>Full Wipe</strong> completely resets your run, lifetime pretzel count, and leaderboard score.`;
     }
   }
 }
@@ -309,7 +504,7 @@ function openActionConfirmation(actionType) {
     setText("confirm-modal-title", "[⚠️] Confirm Full Wipe");
     setText(
       "confirm-modal-body",
-      "Wipe your current run, pretzels, funds, upgrades, continents, Golden Pretzels, and achievements back to the title screen? Your Total Time (All Continents), Best Time Ever, Best Run Pretzels, and Pretzels Created (All Runs) will stay saved."
+      "Perform a complete wipe? This resets your current run, pretzels, lifetime pretzel count, best run stats, upgrades, continents, Golden Pretzels, achievements, and syncs 0 pretzels to the leaderboard so old pretzel counts cannot carry over."
     );
     if (execBtn) {
       execBtn.className = "danger-btn";
@@ -340,11 +535,82 @@ function executePrestigeRun() {
   render();
 }
 
-function executeFullWipe() {
-  if (typeof GameState !== "undefined" && typeof GameState.reset === "function") {
-    GameState.reset(true);
+async function clearCloudLeaderboardScoreOnWipe() {
+  if (typeof CloudSave === "undefined" || !CloudSave.user || !CloudSave.client) return;
+  const shopName = (GameState.playerName || "").trim() || "Unnamed Pretzel Shop";
+  const slug = shopName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "shop";
+  try {
+    const session = await CloudSave.refreshActiveSession();
+    const uid = session?.user?.id || CloudSave.user.id;
+    if (!uid) return;
+    await CloudSave.client
+      .from("shop_leaderboard")
+      .delete()
+      .eq("user_id", uid);
+    await CloudSave.client
+      .from("shop_leaderboard")
+      .upsert({
+        user_id: uid,
+        shop_key: slug,
+        shop_name: shopName,
+        pretzels_all_runs: 0,
+        completed_full_run: false,
+        best_win_seconds: null,
+        game_version: getActiveGameVersion(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: "user_id,shop_key" });
+  } catch (e) {
+    console.warn("Leaderboard wipe sync warning:", e);
   }
+}
+
+async function executeFullWipe() {
+  await clearCloudLeaderboardScoreOnWipe();
+
+  if (typeof GameState !== "undefined") {
+    if (typeof GameState.writeHighScores === "function") {
+      GameState.writeHighScores({
+        totalPlaySecondsAllRuns: 0,
+        bestRunSeconds: 0,
+        bestRunPretzels: 0,
+        lifetimePretzelsBanked: 0,
+        completedFullRun: false
+      });
+    }
+    if (typeof GameState.reset === "function") {
+      GameState.reset(true);
+    }
+    GameState.lifetimePretzelsAllRuns = 0;
+    GameState.bestRunPretzels = 0;
+    GameState.bestRunSeconds = 0;
+    GameState.totalPlaySecondsAllRuns = 0;
+    GameState.completedFullRun = false;
+    GameState.pretzels = 0;
+    GameState.started = false;
+    GameState.playerName = "";
+    GameState.selectedAsciiIndex = 0;
+    if (typeof GameState.writeHighScores === "function") {
+      GameState.writeHighScores({
+        totalPlaySecondsAllRuns: 0,
+        bestRunSeconds: 0,
+        bestRunPretzels: 0,
+        lifetimePretzelsBanked: 0,
+        completedFullRun: false
+      });
+    }
+  }
+
   localStorage.removeItem(COLLAPSED_SECTIONS_KEY);
+  localStorage.removeItem("petes_pretzels_high_scores_v1");
+  localStorage.removeItem("petes_pretzels_old_shops_v1");
+
+  if (typeof liveLeaderboardRows !== "undefined") {
+    liveLeaderboardRows = [];
+  }
+  if (typeof lastLeaderboardSyncByMode !== "undefined") {
+    lastLeaderboardSyncByMode = { pretzels: 0, time: 0 };
+  }
+
   applyTheme("espresso");
   resetRegionalPanelsUI();
   hideEl("confirm-action-modal");
@@ -358,6 +624,10 @@ function executeFullWipe() {
   if (typeof AchievementManager !== "undefined") {
     AchievementManager.queue = [];
     AchievementManager.updateButtonCount();
+  }
+
+  if (typeof syncAndFetchLeaderboard === "function") {
+    syncAndFetchLeaderboard(true);
   }
 
   initSetupPicker();
@@ -382,6 +652,10 @@ async function applyCloudUserSave(user) {
     GameState.save(true);
     logMessage("Current save uploaded to cloud.");
   }
+
+  if (typeof syncAndFetchLeaderboard === "function") {
+    syncAndFetchLeaderboard(true);
+  }
 }
 
 function getModuleTierInfo(count) {
@@ -401,6 +675,12 @@ function getModuleAsciiStage(artKey, tierIndex) {
 function applyModuleTierUI(boxId, badgeId, nextId, count, prefix = "", asciiElId = null, artKey = null) {
   const info = getModuleTierInfo(count);
   const box = getEl(boxId);
+  const prevTier = lastModuleTierMap.get(boxId);
+  if (prevTier !== undefined && info.tier > prevTier) {
+    triggerModuleTierGlow(boxId);
+  }
+  lastModuleTierMap.set(boxId, info.tier);
+
   if (box) {
     box.classList.remove("tier-1", "tier-2", "tier-3", "tier-4");
     if (info.tier > 0) box.classList.add(`tier-${info.tier}`);
@@ -435,7 +715,10 @@ function getDominanceForStage() {
 
 function getEvolvedAscii() {
   const gallery = getGallery();
-  const base = gallery[GameState.selectedAsciiIndex] || gallery[0];
+  const idx = (typeof GameState !== "undefined" && Number.isInteger(GameState.selectedAsciiIndex))
+    ? Math.max(0, Math.min(gallery.length - 1, GameState.selectedAsciiIndex))
+    : 0;
+  const base = gallery[idx] || gallery[0];
   const domPct = getDominanceForStage();
   const sparkFrame = ["✦", "✧", "★", "·"][Math.floor(Date.now() / 350) % 4];
 
@@ -470,27 +753,51 @@ function applyStageAnimationTier(domPct) {
   }
 }
 
-window.startGameFromModal = function() {
+function openSetupModal() {
+  hideEl("title-intro-screen");
+  initSetupPicker();
+  const inputEl = getEl("input-player-name");
+  if (inputEl && typeof GameState !== "undefined" && GameState.playerName && !inputEl.value) {
+    inputEl.value = GameState.playerName;
+  }
+  showEl("setup-modal");
+  if (inputEl) {
+    setTimeout(() => inputEl.focus(), 25);
+  }
+}
+
+function startGameFromModal() {
   const inputEl = getEl("input-player-name");
   const nameInput = inputEl ? inputEl.value.trim() : "";
+  const finalName = nameInput || "Baker";
 
   if (typeof GameState !== "undefined") {
-    GameState.playerName = nameInput || "Baker";
+    GameState.playerName = finalName;
     GameState.started = true;
+    GameState.gameVersion = getActiveGameVersion();
+    if (!Number.isInteger(GameState.selectedAsciiIndex) || GameState.selectedAsciiIndex < 0) {
+      GameState.selectedAsciiIndex = 0;
+    }
     if (!GameState.runStartTime) GameState.runStartTime = Date.now();
     if (typeof GameState.save === "function") {
       GameState.save(true);
     }
   }
 
-  setText("display-player-name", nameInput || "Baker");
+  lastTextCache.delete("txt:display-player-name");
+  lastTextCache.delete("txt:ascii-stage");
+  setText("display-player-name", finalName);
   hideEl("title-intro-screen");
   hideEl("setup-modal");
 
   applySessionUI();
-  logMessage(`Welcome, ${nameInput || "Baker"}. Kitchen is open.`);
+  logMessage(`Welcome to ${getActiveGameVersion()}, ${finalName}. Kitchen is open.`);
   render();
-};
+}
+
+window.openSetupModal = openSetupModal;
+window.startGameFromModal = startGameFromModal;
+window.forceStartGame = startGameFromModal;
 
 function openEndingModal(records = {}) {
   const goldCount = GameState.goldenPretzels || 0;
@@ -748,7 +1055,7 @@ const Projects = [
     id: "unlock_plinko",
     icon: "[🎰]",
     title: "ASCII Pretzel Plinko",
-    desc: "Unlocks high-stakes Plinko in R&D to win Dough or a rare 30s Golden Rush!",
+    desc: "Unlocks high-stakes Plinko in R&D to win Dough or a rare 30s Golden Rush! Press [E] to drop.",
     cashCost: 1200,
     rpCost: 10,
     trigger: () => GameState.unlockedMinigame && GameState.pretzels >= 1500,
@@ -756,7 +1063,7 @@ const Projects = [
       GameState.unlockedPlinko = true;
       showEl("panel-plinko");
       renderPlinkoBoard(true);
-      logMessage("ASCII Plinko unlocked! Hit exact center [★] for Golden Rush.");
+      logMessage("ASCII Plinko unlocked! Press [E] or click Drop to hit center [★] for Golden Rush.");
     }
   },
   {
@@ -1397,6 +1704,11 @@ function bindHoldButton(id, actionFn, options = {}) {
   };
 
   const startHold = (e) => {
+    if (typeof e.clientX === "number" && typeof e.clientY === "number") {
+      lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
+    } else if (e.touches && e.touches[0]) {
+      lastPointerPos = { x: Math.round(e.touches[0].clientX), y: Math.round(e.touches[0].clientY) };
+    }
     if (e.type === "mousedown" && e.button !== 0) return;
     stopHold();
     holdStartTime = Date.now();
@@ -1442,6 +1754,8 @@ function formatDuration(totalSeconds) {
 
 function sanitizeNumbers() {
   if (typeof GameState === "undefined") return;
+  GameState.gameVersion = getActiveGameVersion();
+  if (!Number.isInteger(GameState.selectedAsciiIndex) || GameState.selectedAsciiIndex < 0) GameState.selectedAsciiIndex = 0;
   if (!Number.isFinite(GameState.continentIndex)) GameState.continentIndex = 0;
   if (!Number.isFinite(GameState.highestContinentReached)) GameState.highestContinentReached = 0;
   GameState.highestContinentReached = Math.max(GameState.continentIndex, GameState.highestContinentReached);
@@ -1680,17 +1994,22 @@ function bakePretzels(requestedAmount) {
   return actualBaked;
 }
 
-window.handleManualBake = function() {
+function handleManualBake() {
   if (typeof GameState === "undefined") return;
+  const bakeBtn = getEl("btn-bake");
   if (GameState.dough < 1) {
     logMessage("Out of dough! Hand-knead flour or buy a fresh bag.");
     render();
     return;
   }
   const baked = bakePretzels(GameState.clickPower || 1);
-  recordManualBakeRate(baked);
+  if (baked > 0) {
+    recordManualBakeRate(baked);
+    spawnSubtleClickPop(bakeBtn, `🥨 +${baked}`);
+  }
   render();
-};
+}
+window.handleManualBake = handleManualBake;
 
 function buyDoughBatch(isAuto = false) {
   const batchSize = GameState.doughBatchSize || 500;
@@ -1702,6 +2021,7 @@ function buyDoughBatch(isAuto = false) {
       GameState.doughCost = Math.round(GameState.doughCost * 1.15 * 100) / 100;
     }
     if (!isAuto) {
+      spawnSubtleClickPop(getEl("btn-buy-dough"), `🥨 +${batchSize.toLocaleString()} lbs`);
       logMessage(`Restocked +${batchSize.toLocaleString()} lbs of fresh dough.`);
     }
     return true;
@@ -1718,7 +2038,6 @@ function buySaltMineStep() {
   const newTierInfo = getModuleTierInfo(GameState.saltMines);
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Rock Salt Mines reached ${newTierInfo.label} extraction!`);
-    if (GameState.saltMines === 25) triggerLevel25Juice("module-salt-mine");
   }
   render();
   return true;
@@ -1733,7 +2052,6 @@ function buyWheatFarmStep() {
   const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Winter Wheat Fields reached ${newTierInfo.label} harvest!`);
-    if (GameState.wheatFarms === 25) triggerLevel25Juice("module-wheat-farm");
   }
   render();
   return true;
@@ -1748,7 +2066,6 @@ function buyRefineryStep() {
   const newTierInfo = getModuleTierInfo(GameState.refineries);
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Dough Refineries reached ${newTierInfo.label} throughput!`);
-    if (GameState.refineries === 25) triggerLevel25Juice("module-refinery");
   }
   showEl("refinery-rate-wrap");
   render();
@@ -1765,7 +2082,6 @@ function buyPromoStep() {
   updateDemand();
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Marketing reached ${newTierInfo.label} Demand!`);
-    if (GameState.promoLevel === 25) triggerLevel25Juice("module-promo");
   } else {
     logMessage(`Marketing upgraded to Level ${GameState.promoLevel}!`);
   }
@@ -1782,7 +2098,6 @@ function buyExtruderStep() {
   const newTierInfo = getModuleTierInfo(GameState.extruders);
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Auto-Extruders reached ${newTierInfo.label} output!`);
-    if (GameState.extruders === 25) triggerLevel25Juice("panel-automation");
   }
   render();
   return true;
@@ -1797,7 +2112,6 @@ function buyTruckStep() {
   const newTierInfo = getModuleTierInfo(GameState.trucks);
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Delivery Trucks reached ${newTierInfo.label} capacity!`);
-    if (GameState.trucks === 25) triggerLevel25Juice("panel-trucks");
   }
   render();
   return true;
@@ -1812,7 +2126,6 @@ function buyDroneStep() {
   const newTierInfo = getModuleTierInfo(GameState.drones);
   if (newTierInfo.tier > prevTier) {
     logMessage(`MILESTONE! Pretzel Drones reached ${newTierInfo.label} capacity!`);
-    if (GameState.drones === 25) triggerLevel25Juice("panel-drones");
   }
   render();
   return true;
@@ -1961,6 +2274,7 @@ function dropPlinkoPretzel() {
     col: Math.max(1, Math.min(PLINKO_COLS - 2, Math.round(plinkoDropperPos)))
   };
   plinkoStepTimer = 0;
+  spawnSubtleClickPop(getEl("btn-drop-plinko"), "🥨 ▼");
   setText("plinko-feedback", "Dropping pretzel...");
   renderPlinkoBoard(true);
   render();
@@ -2068,25 +2382,45 @@ function shootTarget() {
 function initSetupPicker() {
   const grid = getEl("ascii-picker-grid");
   const gallery = getGallery();
+  if (!grid) return;
 
-  if (grid) {
-    grid.innerHTML = "";
-    gallery.forEach((art, index) => {
-      const card = document.createElement("div");
-      card.className = "ascii-option" + (index === (GameState.selectedAsciiIndex || 0) ? " selected" : "");
-      const pre = document.createElement("pre");
-      pre.textContent = art;
-      card.appendChild(pre);
-
-      card.addEventListener("click", () => {
-        document.querySelectorAll(".ascii-option").forEach(el => el.classList.remove("selected"));
-        card.classList.add("selected");
-        GameState.selectedAsciiIndex = index;
-      });
-
-      grid.appendChild(card);
-    });
+  if (typeof GameState !== "undefined" && (!Number.isInteger(GameState.selectedAsciiIndex) || GameState.selectedAsciiIndex < 0 || GameState.selectedAsciiIndex >= gallery.length)) {
+    GameState.selectedAsciiIndex = 0;
   }
+  const activeIdx = typeof GameState !== "undefined" ? GameState.selectedAsciiIndex : 0;
+
+  grid.innerHTML = "";
+  gallery.forEach((art, index) => {
+    const card = document.createElement("div");
+    card.className = "ascii-option" + (index === activeIdx ? " selected" : "");
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", `Bakery Icon ${index + 1}`);
+
+    const pre = document.createElement("pre");
+    pre.textContent = art;
+    card.appendChild(pre);
+
+    const selectCard = () => {
+      grid.querySelectorAll(".ascii-option").forEach(el => el.classList.remove("selected"));
+      card.classList.add("selected");
+      if (typeof GameState !== "undefined") {
+        GameState.selectedAsciiIndex = index;
+      }
+      lastTextCache.delete("txt:ascii-stage");
+      setText("ascii-stage", getEvolvedAscii());
+    };
+
+    card.addEventListener("click", selectCard);
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectCard();
+      }
+    });
+
+    grid.appendChild(card);
+  });
 }
 
 function resetRegionalPanelsUI() {
@@ -2097,6 +2431,7 @@ function resetRegionalPanelsUI() {
   autoShooterTimer = 0;
   plinkoBall = null;
   lastPlinkoSignature.value = "";
+  lastModuleTierMap.clear();
   lastTextCache.clear();
 
   document.body.classList.remove("golden-rush-active");
@@ -2124,7 +2459,10 @@ function resetRegionalPanelsUI() {
 }
 
 function applySessionUI() {
-  setText("display-player-name", GameState.playerName);
+  const activeName = (typeof GameState !== "undefined" && GameState.playerName) ? GameState.playerName : "Baker";
+  lastTextCache.delete("txt:display-player-name");
+  lastTextCache.delete("txt:ascii-stage");
+  setText("display-player-name", activeName);
   const domPct = getDominanceForStage();
   setText("ascii-stage", getEvolvedAscii());
   applyStageAnimationTier(domPct);
@@ -2194,6 +2532,9 @@ function completeContinentExpansion() {
       applyTheme("gold-solid");
       logMessage(`EARTH CONQUERED! Unlocked Solid Gold UI & banked +${earnedGold} Golden Pretzels [🥨★]! Pete Pretzel sent a letter.`);
     }
+    if (typeof syncAndFetchLeaderboard === "function") {
+      syncAndFetchLeaderboard(true);
+    }
     render();
     openEndingModal(recordsBeforeReset);
     return;
@@ -2209,6 +2550,16 @@ function bindControls() {
   if (controlsBound) return;
   controlsBound = true;
 
+  document.addEventListener("pointermove", (e) => {
+    lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
+  }, { passive: true });
+
+  document.addEventListener("pointerdown", (e) => {
+    if (typeof e.clientX === "number" && typeof e.clientY === "number") {
+      lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
+    }
+  }, { passive: true });
+
   COLLAPSIBLE_SECTION_IDS.forEach(secId => {
     onClick(`btn-collapse-${secId}`, () => toggleSectionCollapsed(secId));
   });
@@ -2222,10 +2573,22 @@ function bindControls() {
   });
 
   onClick("intro-pretzel-trigger", () => {
-    hideEl("title-intro-screen");
-    initSetupPicker();
-    showEl("setup-modal");
+    openSetupModal();
   });
+
+  onClick("btn-start-game", () => {
+    startGameFromModal();
+  });
+
+  const setupNameInput = getEl("input-player-name");
+  if (setupNameInput) {
+    setupNameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        startGameFromModal();
+      }
+    });
+  }
 
   onClick("btn-continue-current-world", () => {
     hideEl("ending-modal");
@@ -2238,7 +2601,7 @@ function bindControls() {
     render();
   });
 
-  onClick("btn-bake", window.handleManualBake);
+  onClick("btn-bake", handleManualBake);
 
   onClick("btn-cloud-login", async () => {
     const email = (getEl("cloud-email")?.value || "").trim();
@@ -2283,6 +2646,9 @@ function bindControls() {
   onClick("btn-cloud-sync-now", () => {
     if (GameState.started && typeof CloudSave !== "undefined" && CloudSave.user) {
       GameState.save(true);
+      if (typeof syncAndFetchLeaderboard === "function") {
+        syncAndFetchLeaderboard(true);
+      }
       setText("cloud-menu-msg", "Synced to cloud.");
     }
   });
@@ -2393,12 +2759,14 @@ function bindControls() {
       GameState.kneadClicks = 0;
       GameState.dough += 1;
       GameState.handMadeDoughTotal += 1;
+      spawnSubtleClickPop(getEl("btn-knead-dough"), "🥨 +1 lb");
       logMessage("Hand-kneaded +1 lb of emergency dough!");
     }
     render();
   });
 
   onClick("btn-open-achievements", () => {
+    ensureTrophyRoomCollapsibles();
     if (typeof AchievementManager !== "undefined") {
       AchievementManager.renderModal();
     }
@@ -2592,10 +2960,20 @@ function bindControls() {
       hideEl("restart-modal");
       return;
     }
-    if (e.code === "Space" && GameState.started && GameState.unlockedMinigame) {
-      if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT")) return;
+
+    const activeTag = document.activeElement ? document.activeElement.tagName : "";
+    if (activeTag === "INPUT" || activeTag === "SELECT" || activeTag === "TEXTAREA") return;
+    if (!GameState.started) return;
+
+    if (e.code === "KeyB") {
+      e.preventDefault();
+      handleManualBake();
+    } else if (e.code === "Space" && GameState.unlockedMinigame) {
       e.preventDefault();
       shootTarget();
+    } else if (e.code === "KeyE" && GameState.unlockedPlinko) {
+      e.preventDefault();
+      dropPlinkoPretzel();
     }
   });
 }
@@ -2719,9 +3097,12 @@ function render() {
   const netPrice = getEffectivePriceSafe();
   const formattedFunds = GameState.funds.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const wholePretzels = Math.floor(GameState.pretzels);
   const wholeInventory = Math.floor(GameState.inventory);
   const wholeDough = Math.floor(GameState.dough);
   const batchSize = GameState.doughBatchSize || 500;
+
+  applyTabPretzelIconAndTitle(wholePretzels);
 
   const rushRemainingMs = (GameState.goldenRushEndTime || 0) - Date.now();
   if (rushRemainingMs > 0) {
@@ -2734,7 +3115,7 @@ function render() {
   }
 
   setText("top-funds", formattedFunds);
-  setText("pretzels-total", Math.floor(GameState.pretzels).toLocaleString());
+  setText("pretzels-total", wholePretzels.toLocaleString());
   setText("inventory", wholeInventory.toLocaleString());
   setText("rp-total", Math.floor(GameState.researchPoints).toLocaleString());
   setText("price", GameState.price.toFixed(2));
@@ -2990,6 +3371,9 @@ function animateMinigames(timestamp) {
 }
 
 async function bootGame() {
+  initStarfieldBackdrop();
+  applyTabPretzelIconAndTitle(0);
+
   if (typeof GameState === "undefined") {
     logMessage("Error: state.js did not load. Check file folder.");
     return;
@@ -3163,10 +3547,16 @@ async function bootGame() {
     if (GameState.started) {
       GameState.save(true);
       if (typeof syncAndFetchLeaderboard === "function") {
-        syncAndFetchLeaderboard();
+        syncAndFetchLeaderboard(false);
       }
     }
   }, 15000);
+
+  setInterval(() => {
+    if (typeof GameState !== "undefined" && GameState.started) {
+      spawnRareShootingStar(true);
+    }
+  }, SHOOTING_STAR_INTERVAL_MS);
 
   window.addEventListener("beforeunload", () => {
     if (GameState.started) GameState.save(true);
