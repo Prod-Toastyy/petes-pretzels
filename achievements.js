@@ -197,10 +197,11 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
-const LEADERBOARD_VERSION = "BETA.11";
+const LEADERBOARD_VERSION = "BETA.12";
 const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
 const LEADERBOARD_MAX_ROWS = 10;
-const LEADERBOARD_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const LEADERBOARD_PUSH_INTERVAL_MS = 60 * 1000;   // post my score at most once a minute (only if it changed)
+const LEADERBOARD_FETCH_INTERVAL_MS = 30 * 1000;  // refresh the board every 30s while the Trophy Room is open
 
 const GLOBE_MAP = [
   "..............................",
@@ -220,10 +221,15 @@ let globeSpinOffset = 0;
 let activeLeaderboardMode = "pretzels";
 let liveLeaderboardRows = [];
 let leaderboardFetching = false;
+let leaderboardPushing = false;
+let lastLeaderboardPushAt = 0;
+let lastLeaderboardPushSig = "";
 let lastLeaderboardSyncByMode = { pretzels: 0, time: 0 };
 let cachedAnonLeaderboardClient = null;
 
 function getLeaderboardClient() {
+  // Prefer the shared SDK client (one connection for everything).
+  if (typeof CloudSave !== "undefined" && CloudSave.client) return CloudSave.client;
   if (cachedAnonLeaderboardClient) return cachedAnonLeaderboardClient;
   if (typeof SUPABASE_URL !== "undefined" && typeof SUPABASE_ANON_KEY !== "undefined" && window.supabase?.createClient) {
     cachedAnonLeaderboardClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -239,9 +245,14 @@ function getLeaderboardClient() {
   return null;
 }
 
+function isLeaderboardVisible() {
+  const modal = document.getElementById("achievements-modal");
+  return Boolean(modal && !modal.classList.contains("hidden"));
+}
+
 function getCurrentShopSnapshot() {
   if (typeof GameState === "undefined" || !GameState.started) return null;
-  const shopName = (GameState.playerName || "").trim() || "Unnamed Pretzel Shop";
+  const shopName = ((GameState.playerName || "").trim() || "Unnamed Pretzel Shop").slice(0, 28);
   const slug = shopName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "shop";
   const pretzelsAllRuns = typeof GameState.getTotalLifetimePretzelsAllRuns === "function"
     ? Math.max(0, Math.floor(GameState.getTotalLifetimePretzelsAllRuns()))
@@ -252,20 +263,236 @@ function getCurrentShopSnapshot() {
     ? Math.floor(GameState.bestRunSeconds)
     : null;
 
-  const entry = {
+  return {
     shopKey: slug,
     shopName,
     pretzelsAllRuns,
     completedFullRun: hasCompletedFullRun,
     bestWinSeconds
   };
+}
 
-  try {
-    localStorage.setItem(OLD_SHOPS_KEY, JSON.stringify([entry]));
-  } catch (e) {
-    console.error("Failed to save shop snapshot:", e);
+// Writes the signed-in player's single leaderboard row.
+// Update first, insert only if no row exists (no delete, so the player never
+// vanishes from the board mid-sync).
+async function pushLeaderboardRow(shop) {
+  if (typeof CloudSave === "undefined" || !CloudSave.client || !CloudSave.user || !shop) return false;
+  const client = CloudSave.client;
+  const userId = CloudSave.user.id;
+
+  const payload = {
+    shop_key: shop.shopKey,
+    shop_name: String(shop.shopName || "Unnamed Pretzel Shop").slice(0, 28),
+    pretzels_all_runs: Math.max(0, Math.floor(shop.pretzelsAllRuns || 0)),
+    completed_full_run: Boolean(shop.completedFullRun),
+    best_win_seconds: (shop.completedFullRun && shop.bestWinSeconds) ? Math.floor(shop.bestWinSeconds) : null,
+    game_version: LEADERBOARD_VERSION,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await client
+    .from("shop_leaderboard")
+    .update(payload)
+    .eq("user_id", userId)
+    .select("user_id");
+  if (error) throw error;
+
+  if (!data || data.length === 0) {
+    const { error: insErr } = await client
+      .from("shop_leaderboard")
+      .insert({ user_id: userId, ...payload });
+    if (insErr && insErr.code !== "23505") throw insErr; // 23505 = row appeared in between, fine
   }
-  return entry;
+  return true;
+}
+
+// force=true: post my score + fetch the board right now.
+// force=false: post my score at most once a minute (only if it changed), and
+// refresh the board every 30s but ONLY while the Trophy Room is open.
+async function syncAndFetchLeaderboard(force = false) {
+  if (typeof GameState === "undefined") return;
+
+  const now = Date.now();
+  const signedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user) && Boolean(CloudSave.client);
+  const shop = getCurrentShopSnapshot();
+
+  if (signedIn && shop && !leaderboardPushing) {
+    const sig = `${shop.shopName}|${shop.pretzelsAllRuns}|${shop.completedFullRun}|${shop.bestWinSeconds}`;
+    const pushDue = force || (now - lastLeaderboardPushAt >= LEADERBOARD_PUSH_INTERVAL_MS && sig !== lastLeaderboardPushSig);
+    if (pushDue) {
+      leaderboardPushing = true;
+      try {
+        await pushLeaderboardRow(shop);
+        lastLeaderboardPushAt = Date.now();
+        lastLeaderboardPushSig = sig;
+      } catch (err) {
+        console.warn("Leaderboard post failed:", err);
+      } finally {
+        leaderboardPushing = false;
+      }
+    }
+  }
+
+  const visible = isLeaderboardVisible();
+  const lastFetch = lastLeaderboardSyncByMode[activeLeaderboardMode] || 0;
+  const fetchDue = force || (visible && Date.now() - lastFetch >= LEADERBOARD_FETCH_INTERVAL_MS);
+  if (!fetchDue || leaderboardFetching) {
+    if (visible) renderLeaderboard();
+    return;
+  }
+
+  leaderboardFetching = true;
+  try {
+    const client = getLeaderboardClient();
+    if (client) {
+      let query = client
+        .from("shop_leaderboard")
+        .select("user_id, shop_key, shop_name, pretzels_all_runs, best_win_seconds, completed_full_run")
+        .eq("game_version", LEADERBOARD_VERSION)
+        .limit(LEADERBOARD_MAX_ROWS);
+
+      if (activeLeaderboardMode === "time") {
+        query = query
+          .eq("completed_full_run", true)
+          .not("best_win_seconds", "is", null)
+          .gt("best_win_seconds", 0)
+          .order("best_win_seconds", { ascending: true });
+      } else {
+        query = query.order("pretzels_all_runs", { ascending: false });
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error("Leaderboard fetch error:", error);
+      } else if (Array.isArray(data)) {
+        lastLeaderboardSyncByMode[activeLeaderboardMode] = Date.now();
+        const currentUserId = (typeof CloudSave !== "undefined" && CloudSave.user) ? CloudSave.user.id : null;
+        liveLeaderboardRows = data.map(row => ({
+          userId: row.user_id || "",
+          shopKey: row.shop_key || "",
+          shopName: row.shop_name || "Unnamed Pretzel Shop",
+          pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
+          completedFullRun: Boolean(row.completed_full_run),
+          bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
+          isUser: Boolean(currentUserId && row.user_id === currentUserId)
+        }));
+      }
+    }
+  } catch (err) {
+    console.error("Leaderboard fetch error:", err);
+  } finally {
+    leaderboardFetching = false;
+    if (isLeaderboardVisible()) renderLeaderboard();
+  }
+}
+
+function makeLeaderboardRow(rankText, nameText, statText, isPlayer) {
+  const row = document.createElement("div");
+  row.className = "leaderboard-row" + (isPlayer ? " is-player" : "");
+  const left = document.createElement("span");
+  const rankEl = document.createElement("strong");
+  rankEl.textContent = rankText;
+  left.appendChild(rankEl);
+  // textContent only: shop names come from other players, never trust them as HTML.
+  left.appendChild(document.createTextNode(` ${nameText}`));
+  const right = document.createElement("strong");
+  right.textContent = statText;
+  row.append(left, right);
+  return row;
+}
+
+function renderLeaderboard() {
+  const listEl = document.getElementById("leaderboard-list");
+  if (!listEl || typeof GameState === "undefined") return;
+
+  const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
+  const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user);
+  const currentUserId = isSignedIn ? CloudSave.user.id : null;
+  const currentShop = getCurrentShopSnapshot();
+  const timeMode = activeLeaderboardMode === "time";
+
+  const statFor = (e) => timeMode
+    ? (e.bestWinSeconds ? fmtSecs(e.bestWinSeconds) : "—")
+    : `${Math.floor(e.pretzelsAllRuns || 0).toLocaleString()} pretzels`;
+
+  const byAccount = new Map();
+  for (const row of liveLeaderboardRows) {
+    if (isSignedIn && currentShop && row.isUser) {
+      // Show my own row live instead of waiting for the next post.
+      byAccount.set(currentUserId, {
+        ...row,
+        shopKey: currentShop.shopKey,
+        shopName: currentShop.shopName,
+        pretzelsAllRuns: currentShop.pretzelsAllRuns,
+        completedFullRun: currentShop.completedFullRun,
+        bestWinSeconds: currentShop.bestWinSeconds,
+        isUser: true
+      });
+    } else {
+      const k = row.userId || `${row.shopKey}:${row.shopName}`;
+      byAccount.set(k, { ...row });
+    }
+  }
+
+  // Signed in but my row isn't in the last fetch yet (just posted)? Rank me locally right away.
+  if (isSignedIn && currentShop && currentUserId && !byAccount.has(currentUserId)) {
+    byAccount.set(currentUserId, { ...currentShop, userId: currentUserId, isUser: true });
+  }
+
+  let entries = Array.from(byAccount.values());
+  if (timeMode) {
+    entries = entries.filter(e => e.completedFullRun && e.bestWinSeconds !== null && e.bestWinSeconds > 0);
+    entries.sort((a, b) => a.bestWinSeconds - b.bestWinSeconds);
+  } else {
+    entries.sort((a, b) => b.pretzelsAllRuns - a.pretzelsAllRuns);
+  }
+
+  const topTen = entries.slice(0, LEADERBOARD_MAX_ROWS);
+  const frag = document.createDocumentFragment();
+
+  if (topTen.length === 0) {
+    const emptyRow = document.createElement("div");
+    emptyRow.className = "leaderboard-row";
+    const msg = document.createElement("span");
+    msg.textContent = timeMode
+      ? `No full 7-continent run times posted yet in ${LEADERBOARD_VERSION}.`
+      : `No ${LEADERBOARD_VERSION} scores posted yet.`;
+    const dash = document.createElement("strong");
+    dash.textContent = "—";
+    emptyRow.append(msg, dash);
+    frag.appendChild(emptyRow);
+  }
+
+  let playerShown = false;
+  topTen.forEach((entry, index) => {
+    if (entry.isUser) playerShown = true;
+    frag.appendChild(makeLeaderboardRow(
+      `#${index + 1}`,
+      `${entry.shopName}${entry.isUser ? " (Your Shop)" : ""}`,
+      statFor(entry),
+      entry.isUser
+    ));
+  });
+
+  // Footer: always show where *you* stand, signed in or not (nobody gets kicked off the board view).
+  if (currentShop && !playerShown) {
+    if (isSignedIn) {
+      frag.appendChild(makeLeaderboardRow("—", `${currentShop.shopName} (Your Shop)`, statFor(currentShop), true));
+    } else {
+      frag.appendChild(makeLeaderboardRow("—", `${currentShop.shopName} (You, not signed in)`, statFor(currentShop), true));
+    }
+  }
+  if (!isSignedIn) {
+    const noticeRow = document.createElement("div");
+    noticeRow.className = "leaderboard-row";
+    const note = document.createElement("span");
+    note.className = "subtext";
+    note.textContent = "Sign in via Bakery Options to post your score. Your game keeps running either way.";
+    noticeRow.appendChild(note);
+    frag.appendChild(noticeRow);
+  }
+
+  listEl.replaceChildren(frag);
 }
 
 function renderSpinningGlobe() {
@@ -333,171 +560,6 @@ function renderContinentStatusChips() {
     chip.className = `cont-chip ${cls}`;
     chip.textContent = `${prefix} ${c.name}`;
     wrap.appendChild(chip);
-  });
-}
-
-async function syncAndFetchLeaderboard(force = false) {
-  if (leaderboardFetching || typeof GameState === "undefined") return;
-
-  const now = Date.now();
-  const lastSync = lastLeaderboardSyncByMode[activeLeaderboardMode] || 0;
-  if (!force && now - lastSync < LEADERBOARD_SYNC_INTERVAL_MS) {
-    renderLeaderboard();
-    return;
-  }
-
-  leaderboardFetching = true;
-
-  try {
-    const currentShop = getCurrentShopSnapshot();
-    const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user) && Boolean(CloudSave.client);
-
-    if (isSignedIn && currentShop) {
-      const session = await CloudSave.refreshActiveSession();
-      if (session && session.user) {
-        await CloudSave.client
-          .from("shop_leaderboard")
-          .delete()
-          .eq("user_id", session.user.id);
-
-        const { error: upsertErr } = await CloudSave.client
-          .from("shop_leaderboard")
-          .upsert({
-            user_id: session.user.id,
-            shop_key: currentShop.shopKey,
-            shop_name: currentShop.shopName,
-            pretzels_all_runs: Math.max(0, Math.floor(currentShop.pretzelsAllRuns || 0)),
-            completed_full_run: Boolean(currentShop.completedFullRun),
-            best_win_seconds: (currentShop.completedFullRun && currentShop.bestWinSeconds) ? Math.floor(currentShop.bestWinSeconds) : null,
-            game_version: LEADERBOARD_VERSION,
-            updated_at: new Date().toISOString()
-          }, { onConflict: "user_id" });
-        if (upsertErr) console.error("Leaderboard upsert error:", upsertErr);
-      }
-    }
-
-    const client = getLeaderboardClient();
-    if (client) {
-      let query = client
-        .from("shop_leaderboard")
-        .select("user_id, shop_key, shop_name, pretzels_all_runs, best_win_seconds, completed_full_run")
-        .eq("game_version", LEADERBOARD_VERSION)
-        .limit(LEADERBOARD_MAX_ROWS);
-
-      if (activeLeaderboardMode === "time") {
-        query = query
-          .eq("completed_full_run", true)
-          .not("best_win_seconds", "is", null)
-          .gt("best_win_seconds", 0)
-          .order("best_win_seconds", { ascending: true });
-      } else {
-        query = query.order("pretzels_all_runs", { ascending: false });
-      }
-
-      const { data, error } = await query;
-      if (error) {
-        console.error("Leaderboard fetch error:", error);
-      } else if (Array.isArray(data)) {
-        lastLeaderboardSyncByMode[activeLeaderboardMode] = Date.now();
-        const currentUserId = (typeof CloudSave !== "undefined" && CloudSave.user) ? CloudSave.user.id : null;
-        liveLeaderboardRows = data.map(row => ({
-          userId: row.user_id || "",
-          shopKey: row.shop_key || "",
-          shopName: row.shop_name || "Unnamed Pretzel Shop",
-          pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
-          completedFullRun: Boolean(row.completed_full_run),
-          bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
-          isUser: Boolean(currentUserId && row.user_id === currentUserId)
-        }));
-      }
-    }
-  } catch (err) {
-    console.error("Leaderboard sync/fetch error:", err);
-  } finally {
-    leaderboardFetching = false;
-    renderLeaderboard();
-  }
-}
-
-function renderLeaderboard() {
-  const listEl = document.getElementById("leaderboard-list");
-  if (!listEl || typeof GameState === "undefined") return;
-
-  const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
-  const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user);
-  const currentShop = isSignedIn ? getCurrentShopSnapshot() : null;
-  const currentUserId = isSignedIn ? CloudSave.user.id : null;
-
-  const byAccount = new Map();
-
-  for (const row of liveLeaderboardRows) {
-    if (isSignedIn && currentShop && row.isUser) {
-      byAccount.set(currentUserId, {
-        ...row,
-        shopKey: currentShop.shopKey,
-        shopName: currentShop.shopName,
-        pretzelsAllRuns: currentShop.pretzelsAllRuns,
-        completedFullRun: currentShop.completedFullRun,
-        bestWinSeconds: currentShop.bestWinSeconds,
-        isUser: true
-      });
-    } else {
-      const k = row.userId || `${row.shopKey}:${row.shopName}`;
-      byAccount.set(k, { ...row });
-    }
-  }
-
-  if (isSignedIn && currentShop && currentUserId && !byAccount.has(currentUserId)) {
-    byAccount.set(currentUserId, {
-      ...currentShop,
-      userId: currentUserId,
-      isUser: true
-    });
-  }
-
-  let entries = Array.from(byAccount.values());
-
-  if (activeLeaderboardMode === "time") {
-    entries = entries.filter(e => e.completedFullRun && e.bestWinSeconds !== null && e.bestWinSeconds > 0);
-    entries.sort((a, b) => a.bestWinSeconds - b.bestWinSeconds);
-  } else {
-    entries.sort((a, b) => b.pretzelsAllRuns - a.pretzelsAllRuns);
-  }
-
-  const topTen = entries.slice(0, LEADERBOARD_MAX_ROWS);
-
-  listEl.innerHTML = "";
-
-  if (!isSignedIn) {
-    const noticeRow = document.createElement("div");
-    noticeRow.className = "leaderboard-row";
-    noticeRow.innerHTML = `<span class="subtext">Sign in via Bakery Options to post your shop to the Top 10 (updates every 5 min).</span>`;
-    listEl.appendChild(noticeRow);
-  }
-
-  if (topTen.length === 0) {
-    const emptyRow = document.createElement("div");
-    emptyRow.className = "leaderboard-row";
-    emptyRow.innerHTML = activeLeaderboardMode === "time"
-      ? `<span>No full 7-continent run times posted yet in ${LEADERBOARD_VERSION}.</span><strong>—</strong>`
-      : `<span>No ${LEADERBOARD_VERSION} account scores posted yet.</span><strong>—</strong>`;
-    listEl.appendChild(emptyRow);
-    return;
-  }
-
-  topTen.forEach((entry, index) => {
-    const row = document.createElement("div");
-    row.className = "leaderboard-row" + (entry.isUser ? " is-player" : "");
-
-    const statDisplay = activeLeaderboardMode === "time"
-      ? fmtSecs(entry.bestWinSeconds)
-      : `${Math.floor(entry.pretzelsAllRuns).toLocaleString()} pretzels`;
-
-    row.innerHTML = `
-      <span><strong>#${index + 1}</strong> ${entry.shopName}${entry.isUser ? " (Your Shop)" : ""}</span>
-      <strong>${statDisplay}</strong>
-    `;
-    listEl.appendChild(row);
   });
 }
 

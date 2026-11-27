@@ -1,4 +1,4 @@
-const GAME_VERSION = "BETA.11";
+const GAME_VERSION = "BETA.12";
 const SAVE_KEY = "petes_pretzels_save_v4";
 const HIGH_SCORES_KEY = "petes_pretzels_high_scores_v1";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
@@ -318,7 +318,12 @@ const GameState = {
     if (addSeconds > 0) {
       this.elapsedRunSeconds = (this.elapsedRunSeconds || 0) + addSeconds;
       this.totalPlaySecondsAllRuns = (this.totalPlaySecondsAllRuns || 0) + addSeconds;
-      this.syncPersistentHighScores();
+      // BETA.12: only touch localStorage every ~10s of play (was every second)
+      this._hsSyncAcc = (this._hsSyncAcc || 0) + addSeconds;
+      if (this._hsSyncAcc >= 10) {
+        this._hsSyncAcc = 0;
+        this.syncPersistentHighScores();
+      }
     }
   },
 
@@ -398,7 +403,7 @@ const GameState = {
     this.rangeShooterCost = Math.round(2500.00 * scale * 100) / 100;
 
     this.syncPersistentHighScores();
-    this.save(true);
+    this.save(true, true);
     return { earnedGold, conqueringFinalWorld };
   },
 
@@ -437,7 +442,7 @@ const GameState = {
     this.elapsedRunSeconds = 0;
 
     this.syncPersistentHighScores();
-    this.save(true);
+    this.save(true, true);
     return { totalGold, bonusGold };
   },
 
@@ -503,11 +508,28 @@ const GameState = {
     return 0;
   },
 
-  save(syncCloud = false) {
+  // syncCloud: also upload. immediate: skip the 20s upload throttle.
+  save(syncCloud = false, immediate = false) {
     const snapshot = this.getSnapshot();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+      console.error("Local save failed:", e);
+    }
     if (syncCloud && typeof CloudSave !== "undefined" && CloudSave.user) {
-      CloudSave.pushToCloud(snapshot);
+      if (immediate) CloudSave.pushToCloud(snapshot);
+      else CloudSave.queuePush(snapshot);
+    }
+  },
+
+  // Called when the tab is hidden/closed.
+  saveOnExit() {
+    const snapshot = this.getSnapshot();
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
+    } catch (e) { /* ignore */ }
+    if (typeof CloudSave !== "undefined" && CloudSave.user && typeof CloudSave.flushOnExit === "function") {
+      CloudSave.flushOnExit(snapshot);
     }
   },
 
