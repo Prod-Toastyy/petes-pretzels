@@ -212,11 +212,15 @@ const GameState = {
   },
 
   syncPersistentHighScores() {
-    const hs = this.readHighScores();
+   const hs = this.readHighScores();
     const runPretzels = Math.floor(this.pretzels || 0);
     const totalSecs = Math.max(this.totalPlaySecondsAllRuns || 0, hs.totalPlaySecondsAllRuns || 0);
-    const completedFlag = Boolean(this.completedFullRun && (this.bestRunSeconds || 0) > 0);
-    const bestSecs = completedFlag ? Math.floor(this.bestRunSeconds || 0) : 0;
+
+    const memBest = (this.completedFullRun && (this.bestRunSeconds || 0) > 0) ? Math.floor(this.bestRunSeconds) : 0;
+    const hsBest = (hs.completedFullRun && (hs.bestRunSeconds || 0) > 0) ? Math.floor(hs.bestRunSeconds) : 0;
+    const completedFlag = Boolean(memBest > 0 || hsBest > 0);
+    const bestSecs = (memBest > 0 && hsBest > 0) ? Math.min(memBest, hsBest) : (memBest || hsBest);
+
     const bestPretzels = Math.max(this.bestRunPretzels || 0, hs.bestRunPretzels || 0, runPretzels);
     const bankedLifetime = Math.max(this.lifetimePretzelsAllRuns || 0, hs.lifetimePretzelsBanked || 0);
 
@@ -457,8 +461,7 @@ const GameState = {
       }
     }
     this.gameVersion = GAME_VERSION;
-    this.bestRunSeconds = 0;
-    this.completedFullRun = false;
+   
 
     this.syncHighestContinent();
     this.syncPersistentHighScores();
@@ -511,8 +514,8 @@ const GameState = {
   load() {
     const hs = this.readHighScores();
     this.totalPlaySecondsAllRuns = hs.totalPlaySecondsAllRuns;
-    this.completedFullRun = false;
-    this.bestRunSeconds = 0;
+    this.completedFullRun = Boolean(hs.completedFullRun);
+    this.bestRunSeconds = hs.bestRunSeconds || 0;
     this.bestRunPretzels = hs.bestRunPretzels;
     this.lifetimePretzelsAllRuns = hs.lifetimePretzelsBanked;
 
