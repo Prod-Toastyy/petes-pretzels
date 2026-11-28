@@ -200,8 +200,8 @@ const ACHIEVEMENTS_LIST = [
 const LEADERBOARD_VERSION = "BETA.14";
 const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
 const LEADERBOARD_MAX_ROWS = 10;
-const LEADERBOARD_PUSH_INTERVAL_MS = 60 * 1000;   // post my score at most once a minute (only if it changed)
-const LEADERBOARD_FETCH_INTERVAL_MS = 30 * 1000;  // refresh the board every 30s while the Trophy Room is open
+const LEADERBOARD_PUSH_INTERVAL_MS = 60 * 1000;
+const LEADERBOARD_FETCH_INTERVAL_MS = 30 * 1000;
 
 const GLOBE_MAP = [
   "..............................",
@@ -263,6 +263,10 @@ function getCurrentShopSnapshot() {
     ? Math.floor(GameState.bestRunSeconds)
     : null;
 
+  const lowestWinSeconds = (GameState.lowestWinSeconds || 0) > 0
+    ? Math.floor(GameState.lowestWinSeconds)
+    : null;
+
   const lifetimeGold = typeof GameState.getLifetimeGoldenPretzels === "function"
     ? GameState.getLifetimeGoldenPretzels()
     : Math.max(0, Math.floor(GameState.goldenPretzels || 0));
@@ -277,6 +281,7 @@ function getCurrentShopSnapshot() {
     pretzelsAllRuns,
     completedFullRun: hasCompletedFullRun,
     bestWinSeconds,
+    lowestWinSeconds,
     lifetimeGold,
     fastestDomSeconds
   };
@@ -321,7 +326,7 @@ async function syncAndFetchLeaderboard(force = false) {
   const shop = getCurrentShopSnapshot();
 
   if (signedIn && shop && !leaderboardPushing) {
-    const sig = `${shop.shopName}|${shop.pretzelsAllRuns}|${shop.completedFullRun}|${shop.bestWinSeconds}|${shop.lifetimeGold}|${shop.fastestDomSeconds}`;
+    const sig = `${shop.shopName}|${shop.pretzelsAllRuns}|${shop.completedFullRun}|${shop.bestWinSeconds}|${shop.lowestWinSeconds}|${shop.lifetimeGold}|${shop.fastestDomSeconds}`;
     const pushDue = force || (now - lastLeaderboardPushAt >= LEADERBOARD_PUSH_INTERVAL_MS && sig !== lastLeaderboardPushSig);
     if (pushDue) {
       leaderboardPushing = true;
@@ -354,7 +359,7 @@ async function syncAndFetchLeaderboard(force = false) {
         .select("user_id, shop_key, shop_name, pretzels_all_runs, best_win_seconds, completed_full_run")
         .limit(LEADERBOARD_MAX_ROWS);
 
-      if (activeLeaderboardMode === "time" || activeLeaderboardMode === "domination") {
+      if (activeLeaderboardMode === "time") {
         query = query
           .eq("completed_full_run", true)
           .not("best_win_seconds", "is", null)
@@ -370,17 +375,21 @@ async function syncAndFetchLeaderboard(force = false) {
       } else if (Array.isArray(data)) {
         lastLeaderboardSyncByMode[activeLeaderboardMode] = Date.now();
         const currentUserId = (typeof CloudSave !== "undefined" && CloudSave.user) ? CloudSave.user.id : null;
-        liveLeaderboardRows = data.map(row => ({
-          userId: row.user_id || "",
-          shopKey: row.shop_key || "",
-          shopName: row.shop_name || "Unnamed Pretzel Shop",
-          pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
-          completedFullRun: Boolean(row.completed_full_run),
-          bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
-          lifetimeGold: 0,
-          fastestDomSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
-          isUser: Boolean(currentUserId && row.user_id === currentUserId)
-        }));
+        liveLeaderboardRows = data.map(row => {
+          const isCurrentUser = Boolean(currentUserId && row.user_id === currentUserId);
+          return {
+            userId: row.user_id || "",
+            shopKey: row.shop_key || "",
+            shopName: row.shop_name || "Unnamed Pretzel Shop",
+            pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
+            completedFullRun: Boolean(row.completed_full_run),
+            bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
+            lowestWinSeconds: isCurrentUser && shop ? shop.lowestWinSeconds : null,
+            lifetimeGold: isCurrentUser && shop ? shop.lifetimeGold : 0,
+            fastestDomSeconds: isCurrentUser && shop ? shop.fastestDomSeconds : null,
+            isUser: isCurrentUser
+          };
+        });
       }
     }
   } catch (err) {
@@ -416,11 +425,11 @@ function renderLeaderboard() {
 
   const statFor = (e) => {
     if (activeLeaderboardMode === "time") {
-      return e.bestWinSeconds ? fmtSecs(e.bestWinSeconds) : "—";
+      const winSecs = e.lowestWinSeconds || e.bestWinSeconds;
+      return winSecs ? fmtSecs(winSecs) : "—";
     }
     if (activeLeaderboardMode === "domination") {
-      const domSecs = e.fastestDomSeconds || e.bestWinSeconds;
-      return domSecs ? fmtSecs(domSecs) : "—";
+      return e.fastestDomSeconds ? fmtSecs(e.fastestDomSeconds) : "—";
     }
     if (activeLeaderboardMode === "gold") {
       return `${Math.floor(e.lifetimeGold || 0).toLocaleString()} [🥨★]`;
@@ -438,8 +447,9 @@ function renderLeaderboard() {
         pretzelsAllRuns: currentShop.pretzelsAllRuns,
         completedFullRun: currentShop.completedFullRun,
         bestWinSeconds: currentShop.bestWinSeconds,
+        lowestWinSeconds: currentShop.lowestWinSeconds,
         lifetimeGold: currentShop.lifetimeGold,
-        fastestDomSeconds: currentShop.fastestDomSeconds || currentShop.bestWinSeconds,
+        fastestDomSeconds: currentShop.fastestDomSeconds,
         isUser: true
       });
     } else {
@@ -454,11 +464,11 @@ function renderLeaderboard() {
 
   let entries = Array.from(byAccount.values());
   if (activeLeaderboardMode === "time") {
-    entries = entries.filter(e => e.completedFullRun && e.bestWinSeconds !== null && e.bestWinSeconds > 0);
-    entries.sort((a, b) => a.bestWinSeconds - b.bestWinSeconds);
+    entries = entries.filter(e => (e.lowestWinSeconds || e.bestWinSeconds) > 0);
+    entries.sort((a, b) => (a.lowestWinSeconds || a.bestWinSeconds) - (b.lowestWinSeconds || b.bestWinSeconds));
   } else if (activeLeaderboardMode === "domination") {
-    entries = entries.filter(e => (e.fastestDomSeconds || e.bestWinSeconds) > 0);
-    entries.sort((a, b) => (a.fastestDomSeconds || a.bestWinSeconds) - (b.fastestDomSeconds || b.bestWinSeconds));
+    entries = entries.filter(e => Number(e.fastestDomSeconds) > 0);
+    entries.sort((a, b) => a.fastestDomSeconds - b.fastestDomSeconds);
   } else if (activeLeaderboardMode === "gold") {
     entries.sort((a, b) => (b.lifetimeGold || 0) - (a.lifetimeGold || 0));
   } else {
@@ -472,9 +482,11 @@ function renderLeaderboard() {
     const emptyRow = document.createElement("div");
     emptyRow.className = "leaderboard-row";
     const msg = document.createElement("span");
-    msg.textContent = (activeLeaderboardMode === "time" || activeLeaderboardMode === "domination")
-      ? "No full 7-continent run times posted yet."
-      : "No scores posted yet.";
+    msg.textContent = activeLeaderboardMode === "domination"
+      ? "No 7-continent domination times recorded yet."
+      : activeLeaderboardMode === "time"
+        ? "No win times recorded yet."
+        : "No scores posted yet.";
     const dash = document.createElement("strong");
     dash.textContent = "—";
     emptyRow.append(msg, dash);

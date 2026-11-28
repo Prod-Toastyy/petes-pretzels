@@ -3763,9 +3763,9 @@ function bindControls() {
 
   onClick("btn-expand-continent", () => {
     if (typeof AchievementManager === "undefined" || !AchievementManager.canExpandContinent()) return;
-    const nextName = GameState.getNextContinentName();
-    const { earnedGold, conqueringFinalWorld } = GameState.expandToNextContinent();
-    const records = conqueringFinalWorld ? GameState.finalizeRunRecords() : null;
+   const nextName = GameState.getNextContinentName();
+   const { earnedGold, conqueringFinalWorld, completedFullRunSecs } = GameState.expandToNextContinent();
+   const records = conqueringFinalWorld ? GameState.finalizeRunRecords(completedFullRunSecs) : null;
 
     resetRegionalPanelsUI();
     updateDemand();

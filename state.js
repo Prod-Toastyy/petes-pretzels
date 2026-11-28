@@ -80,6 +80,7 @@ const DEFAULT_HIGH_SCORES = {
   totalPlaySecondsAllRuns: 0,
   bestRunSeconds: 0,
   fastestDominationSeconds: 0,
+  lowestWinSeconds: 0,
   bestRunPretzels: 0,
   lifetimePretzelsBanked: 0,
   lifetimeGoldenPretzels: 0,
@@ -100,6 +101,7 @@ const DEFAULT_STATE = {
   totalPlaySecondsAllRuns: 0,
   bestRunSeconds: 0,
   fastestDominationSeconds: 0,
+  lowestWinSeconds: 0,
   bestRunPretzels: 0,
   completedFullRun: false,
   goldUiUnlocked: false,
@@ -202,6 +204,7 @@ const GameState = {
           ? Math.floor(Number(parsed.bestRunSeconds))
           : 0,
         fastestDominationSeconds: Math.max(0, Math.floor(Number(parsed.fastestDominationSeconds) || 0)),
+        lowestWinSeconds: Math.max(0, Math.floor(Number(parsed.lowestWinSeconds) || 0)),
         bestRunPretzels: Math.max(0, Math.floor(Number(parsed.bestRunPretzels) || 0)),
         lifetimePretzelsBanked: Math.max(0, Math.floor(Number(parsed.lifetimePretzelsBanked) || 0)),
         lifetimeGoldenPretzels: Math.max(0, Math.floor(Number(parsed.lifetimeGoldenPretzels) || 0)),
@@ -218,6 +221,7 @@ const GameState = {
         totalPlaySecondsAllRuns: Math.max(0, Math.floor(Number(scores.totalPlaySecondsAllRuns) || 0)),
         bestRunSeconds: Math.max(0, Math.floor(Number(scores.bestRunSeconds) || 0)),
         fastestDominationSeconds: Math.max(0, Math.floor(Number(scores.fastestDominationSeconds) || 0)),
+        lowestWinSeconds: Math.max(0, Math.floor(Number(scores.lowestWinSeconds) || 0)),
         bestRunPretzels: Math.max(0, Math.floor(Number(scores.bestRunPretzels) || 0)),
         lifetimePretzelsBanked: Math.max(0, Math.floor(Number(scores.lifetimePretzelsBanked) || 0)),
         lifetimeGoldenPretzels: Math.max(0, Math.floor(Number(scores.lifetimeGoldenPretzels) || 0)),
@@ -242,6 +246,10 @@ const GameState = {
     const hsDom = Math.max(0, Math.floor(Number(hs.fastestDominationSeconds) || 0));
     const fastestDom = (memDom > 0 && hsDom > 0) ? Math.min(memDom, hsDom) : (memDom || hsDom);
 
+    const memWin = Math.max(0, Math.floor(Number(this.lowestWinSeconds) || 0));
+    const hsWin = Math.max(0, Math.floor(Number(hs.lowestWinSeconds) || 0));
+    const lowestWin = (memWin > 0 && hsWin > 0) ? Math.min(memWin, hsWin) : (memWin || hsWin);
+
     const bestPretzels = Math.max(this.bestRunPretzels || 0, hs.bestRunPretzels || 0, runPretzels);
     const bankedLifetime = Math.max(this.lifetimePretzelsAllRuns || 0, hs.lifetimePretzelsBanked || 0);
     const lifetimeGold = Math.max(
@@ -254,6 +262,7 @@ const GameState = {
     this.completedFullRun = completedFlag;
     this.bestRunSeconds = bestSecs;
     this.fastestDominationSeconds = fastestDom;
+    this.lowestWinSeconds = lowestWin;
     this.bestRunPretzels = bestPretzels;
     this.lifetimePretzelsAllRuns = bankedLifetime;
     this.lifetimeGoldenPretzels = lifetimeGold;
@@ -262,6 +271,7 @@ const GameState = {
       totalPlaySecondsAllRuns: totalSecs,
       bestRunSeconds: bestSecs,
       fastestDominationSeconds: fastestDom,
+      lowestWinSeconds: lowestWin,
       bestRunPretzels: bestPretzels,
       lifetimePretzelsBanked: bankedLifetime,
       lifetimeGoldenPretzels: lifetimeGold,
@@ -365,9 +375,29 @@ const GameState = {
     }
   },
 
-  finalizeRunRecords() {
+  recordDominationTime(secs) {
+    const cleanSecs = Math.floor(Number(secs) || 0);
+    if (cleanSecs > 0 && ((this.fastestDominationSeconds || 0) === 0 || cleanSecs < this.fastestDominationSeconds)) {
+      this.fastestDominationSeconds = cleanSecs;
+      this.syncPersistentHighScores();
+    }
+  },
+
+  recordWinTime(secs) {
+    const cleanSecs = Math.floor(Number(secs) || 0);
+    if (cleanSecs > 0 && ((this.lowestWinSeconds || 0) === 0 || cleanSecs < this.lowestWinSeconds)) {
+      this.lowestWinSeconds = cleanSecs;
+      this.syncPersistentHighScores();
+    }
+  },
+
+  finalizeRunRecords(completedRunSecs = null) {
     this.recordRunProgress(0);
-    const currentSecs = Math.floor(this.elapsedRunSeconds || 0);
+    const currentSecs = Math.floor(
+      Number.isFinite(completedRunSecs) && completedRunSecs > 0
+        ? completedRunSecs
+        : (this.elapsedRunSeconds || 0)
+    );
     let isNewBestTime = false;
     let isNewBestPretzels = false;
 
@@ -376,9 +406,10 @@ const GameState = {
       this.bestRunSeconds = currentSecs;
       isNewBestTime = true;
     }
-    if (currentSecs > 0 && ((this.fastestDominationSeconds || 0) === 0 || currentSecs < this.fastestDominationSeconds)) {
-      this.fastestDominationSeconds = currentSecs;
+    if (currentSecs > 0) {
+      this.recordWinTime(currentSecs);
     }
+
     const runPretzels = Math.floor(this.pretzels || 0);
     if (runPretzels >= (this.bestRunPretzels || 0) && runPretzels > 0) {
       this.bestRunPretzels = runPretzels;
@@ -413,16 +444,22 @@ const GameState = {
     const runPretzels = Math.floor(this.pretzels || 0);
     let nextBestSecs = this.completedFullRun ? (this.bestRunSeconds || 0) : 0;
     let nextFastestDom = this.fastestDominationSeconds || 0;
+    let nextLowestWin = this.lowestWinSeconds || 0;
     const nextCompletedFullRun = Boolean(this.completedFullRun || conqueringFinalWorld);
 
     if (conqueringFinalWorld && runSecs > 0) {
       if (nextBestSecs === 0 || runSecs < nextBestSecs) nextBestSecs = runSecs;
+      if (nextLowestWin === 0 || runSecs < nextLowestWin) nextLowestWin = runSecs;
+    }
+
+    if (nextHighestContinent >= 7 && runSecs > 0) {
       if (nextFastestDom === 0 || runSecs < nextFastestDom) nextFastestDom = runSecs;
     }
+
     const nextBestPretzels = Math.max(this.bestRunPretzels || 0, runPretzels);
 
-    // Keep elapsedRunSeconds across continent expansions so full-run time accumulates;
-    // reset only continentElapsedSeconds for the new territory.
+    // Capture full-run elapsed seconds before resetting on final world completion.
+    const completedFullRunSecs = conqueringFinalWorld ? runSecs : null;
     const carriedRunSeconds = conqueringFinalWorld ? 0 : runSecs;
 
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
@@ -445,6 +482,7 @@ const GameState = {
     this.completedFullRun = nextCompletedFullRun;
     this.bestRunSeconds = nextBestSecs;
     this.fastestDominationSeconds = nextFastestDom;
+    this.lowestWinSeconds = nextLowestWin;
     this.bestRunPretzels = nextBestPretzels;
     this.runStartTime = Date.now() - (carriedRunSeconds * 1000);
     this.elapsedRunSeconds = carriedRunSeconds;
@@ -463,7 +501,7 @@ const GameState = {
 
     this.syncPersistentHighScores();
     this.save(true, true);
-    return { earnedGold, conqueringFinalWorld };
+    return { earnedGold, conqueringFinalWorld, completedFullRunSecs };
   },
 
   prestigeRestartRun(claimPendingGold = false) {
@@ -485,6 +523,7 @@ const GameState = {
     const nextCompletedFullRun = Boolean(this.completedFullRun);
     const nextBestSecs = nextCompletedFullRun ? (this.bestRunSeconds || 0) : 0;
     const nextFastestDom = this.fastestDominationSeconds || 0;
+    const nextLowestWin = this.lowestWinSeconds || 0;
     const nextBestPretzels = Math.max(this.bestRunPretzels || 0, Math.floor(this.pretzels || 0));
 
     Object.assign(this, JSON.parse(JSON.stringify(DEFAULT_STATE)));
@@ -507,6 +546,7 @@ const GameState = {
     this.completedFullRun = nextCompletedFullRun;
     this.bestRunSeconds = nextBestSecs;
     this.fastestDominationSeconds = nextFastestDom;
+    this.lowestWinSeconds = nextLowestWin;
     this.bestRunPretzels = nextBestPretzels;
     this.runStartTime = Date.now();
     this.elapsedRunSeconds = 0;
@@ -604,6 +644,7 @@ const GameState = {
     this.completedFullRun = Boolean(hs.completedFullRun);
     this.bestRunSeconds = hs.bestRunSeconds || 0;
     this.fastestDominationSeconds = hs.fastestDominationSeconds || 0;
+    this.lowestWinSeconds = hs.lowestWinSeconds || 0;
     this.bestRunPretzels = hs.bestRunPretzels;
     this.lifetimePretzelsAllRuns = hs.lifetimePretzelsBanked;
     this.lifetimeGoldenPretzels = hs.lifetimeGoldenPretzels;
