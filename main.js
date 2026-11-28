@@ -1,7 +1,12 @@
 const THEME_STORAGE_KEY = "petes_pretzels_theme";
 const COLLAPSED_SECTIONS_KEY = "petes_pretzels_collapsed_sections_v1";
 const AUDIO_PREFS_KEY = "petes_pretzels_audio_v1";
-const SHOOTING_STAR_INTERVAL_MS = 30 * 60 * 1000;
+// Shooting star: checked every minute, ~1 in 90 per check, so roughly once per 1.5 hours on average.
+const SHOOTING_STAR_CHECK_MS = 60 * 1000;
+const SHOOTING_STAR_CHANCE = 1 / 90;
+// Star twinkle: one random star every 4 to 12 seconds.
+const STAR_TWINKLE_MIN_MS = 4000;
+const STAR_TWINKLE_MAX_MS = 12000;
 const MAX_CLICK_POPS = 12;
 const STARFIELD_STAR_COUNT = 24;
 
@@ -74,7 +79,7 @@ let lastPointerPos = {
 };
 
 function getActiveGameVersion() {
-  return typeof GAME_VERSION !== "undefined" ? GAME_VERSION : "BETA.12";
+  return typeof GAME_VERSION !== "undefined" ? GAME_VERSION : "BETA.13";
 }
 
 function getEl(id) {
@@ -121,6 +126,8 @@ function onClick(id, handler) {
 const SoundSystem = {
   ctx: null,
   bgmEl: null,
+  bgmSource: null,
+  bgmGain: null,
   enabledMusic: false,
   musicTrack: MUSIC_TRACKS[0].file,
   musicVol: 0.35,
@@ -160,10 +167,24 @@ const SoundSystem = {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) this.ctx = new AudioCtx();
     }
-    if (this.ctx && this.ctx.state === "suspended") {
+    if (this.ctx && this.ctx.state !== "running" && this.ctx.state !== "closed") {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
+  },
+
+  // Desktop browsers honor HTMLMediaElement.volume; iOS/iPadOS Safari ignores it (always reads 1).
+  // Probe once so we only use the Web Audio gain route where we truly need it.
+  elementVolumeWorks() {
+    if (this._elVolOk !== undefined) return this._elVolOk;
+    try {
+      const probe = new Audio();
+      probe.volume = 0.5;
+      this._elVolOk = Math.abs(probe.volume - 0.5) < 0.001;
+    } catch (e) {
+      this._elVolOk = true;
+    }
+    return this._elVolOk;
   },
 
   ensureBgm() {
@@ -176,15 +197,83 @@ const SoundSystem = {
     if (this.bgmEl.getAttribute("src") !== desiredSrc) {
       this.bgmEl.setAttribute("src", desiredSrc);
     }
-    this.bgmEl.volume = this.musicVol;
+    this.applyMusicVolume();
     return this.bgmEl;
+  },
+
+  // BETA.13: route bgm through a GainNode. iOS Safari ignores HTMLMediaElement.volume.
+  // Created lazily from a user gesture; falls back to element volume if Web Audio is unavailable.
+  routeBgmThroughGain() {
+    if (this.bgmGain) return true;
+    if (this.elementVolumeWorks()) return false; // desktop: plain element.volume, no Web Audio graph to go silent
+    const ctx = this.ensureContext();
+    if (!ctx || !this.bgmEl || typeof ctx.createMediaElementSource !== "function") return false;
+    try {
+      this.bgmSource = ctx.createMediaElementSource(this.bgmEl);
+      this.bgmGain = ctx.createGain();
+      this.bgmSource.connect(this.bgmGain);
+      this.bgmGain.connect(ctx.destination);
+      return true;
+    } catch (e) {
+      console.error("BGM gain routing failed:", e);
+      this.bgmSource = null;
+      this.bgmGain = null;
+      return false;
+    }
+  },
+
+  applyMusicVolume() {
+    if (this.bgmGain) {
+      this.bgmGain.gain.value = this.musicVol;
+      if (this.bgmEl) this.bgmEl.volume = 1; // gain node owns the level once routed (avoids vol squared)
+    } else if (this.bgmEl) {
+      this.bgmEl.volume = this.musicVol;
+    }
+  },
+
+  playBgm() {
+    const bgm = this.bgmEl;
+    if (!bgm) return;
+    const start = () => {
+      const p = bgm.play();
+      if (p && p.catch) p.catch(e => console.warn("Music play blocked/failed:", e && e.name, e && e.message));
+    };
+    // When routed through Web Audio, the context must be running or the output is silent.
+    const ctx = this.bgmGain ? this.ensureContext() : null;
+    if (ctx && ctx.state !== "running") {
+      ctx.resume().then(start, start);
+    } else {
+      start();
+    }
+  },
+
+  // Browsers block audio until a user gesture. If music was saved as ON, start it on the
+  // first click/tap/key anywhere (e.g. the intro "start" button) instead of waiting for a toggle.
+  armMusicAutostart() {
+    if (!this.enabledMusic || this._autostartArmed) return;
+    this._autostartArmed = true;
+    const events = ["pointerdown", "touchend", "keydown"];
+    const disarm = () => {
+      events.forEach(ev => document.removeEventListener(ev, onGesture, true));
+      this._autostartArmed = false;
+    };
+    const onGesture = (e) => {
+      if (!this.enabledMusic) { disarm(); return; }
+      const t = e.target;
+      if (t && t.closest && t.closest("#btn-toggle-music")) return; // toggle handler deals with it
+      disarm();
+      if (this.bgmEl && !this.bgmEl.paused) return; // already playing
+      this.syncMusicPlayback();
+    };
+    events.forEach(ev => document.addEventListener(ev, onGesture, true));
   },
 
   syncMusicPlayback() {
     const bgm = this.ensureBgm();
-    bgm.volume = this.musicVol;
+    this.routeBgmThroughGain();
+    this.applyMusicVolume();
     if (this.enabledMusic) {
-      bgm.play().catch(() => {});
+      this.playBgm();
     } else {
       bgm.pause();
     }
@@ -275,9 +364,16 @@ const SoundSystem = {
 
     onClick("btn-toggle-music", () => {
       this.ensureContext();
+      // Label says ON but autoplay was blocked: this click should start the music, not turn it off.
+      if (this.enabledMusic && this.bgmEl && this.bgmEl.paused) {
+        this.syncMusicPlayback();
+        return;
+      }
       this.enabledMusic = !this.enabledMusic;
       this.syncMusicPlayback();
     });
+
+    this.armMusicAutostart();
 
     const trackSel = getEl("select-music-track");
     if (trackSel) {
@@ -292,7 +388,9 @@ const SoundSystem = {
     if (musicSlider) {
       musicSlider.addEventListener("input", (e) => {
         this.musicVol = Math.max(0, Math.min(1, Number(e.target.value) / 100));
-        if (this.bgmEl) this.bgmEl.volume = this.musicVol;
+        this.ensureBgm();
+        this.routeBgmThroughGain();
+        this.applyMusicVolume();
         this.savePrefs();
         this.refreshControlsUI();
       });
@@ -361,11 +459,30 @@ function initStarfieldBackdrop() {
       star.style.left = `${((i * 19.7) % 97) + 1.5}%`;
       star.style.top = `${((i * 29.3) % 94) + 2.5}%`;
       star.style.fontSize = i % 3 === 0 ? "12px" : i % 2 === 0 ? "10px" : "8px";
-      star.style.opacity = String(0.32 + ((i % 4) * 0.14));
+      const baseOpacity = 0.32 + ((i % 4) * 0.14);
+      star.style.opacity = String(baseOpacity);
+      star.style.setProperty("--star-base", String(baseOpacity));
       frag.appendChild(star);
     }
     layer.appendChild(frag);
   }
+}
+
+function scheduleStarTwinkle() {
+  const delay = STAR_TWINKLE_MIN_MS + Math.random() * (STAR_TWINKLE_MAX_MS - STAR_TWINKLE_MIN_MS);
+  setTimeout(() => {
+    if (!document.hidden) {
+      const stars = document.querySelectorAll("#bakery-starfield .starfield-dot");
+      if (stars.length) {
+        const s = stars[Math.floor(Math.random() * stars.length)];
+        s.classList.remove("twinkle");
+        void s.offsetWidth;
+        s.classList.add("twinkle");
+        setTimeout(() => s.classList.remove("twinkle"), 1500);
+      }
+    }
+    scheduleStarTwinkle();
+  }, delay);
 }
 
 function spawnRareShootingStar(announce = true) {
@@ -1444,6 +1561,22 @@ const Projects = [
     }
   },
   {
+    id: "auto_pricer",
+    icon: "[🏷️]",
+    title: "Auto-Pricer Algorithm",
+    desc: "Automatically sets your price to the highest point where demand still matches your production.",
+    cashCost: 25000,
+    rpCost: 40,
+    trigger: () => GameState.unlockedSupplyChain && GameState.extruders >= 25,
+    effect: () => {
+      GameState.unlockedAutoPricer = true;
+      GameState.autoPricerEnabled = true;
+      showEl("btn-toggle-autopricer");
+      applyAutoPrice();
+      logMessage("Auto-Pricer online! Price now tracks demand automatically.");
+    }
+  },
+  {
     id: "supply_cryo_salt",
     icon: "[⛏️]",
     title: "Cryo-Borehole Salt Extraction",
@@ -2009,7 +2142,27 @@ function getExponentialPriceStep(heldSecs) {
 
 function logMessage(msg) {
   setText("console-log", `> ${msg}`);
+  updateConsoleMarquee();
 }
+
+// If the top console line is wider than its box, slowly scroll it across (and back); otherwise leave it static.
+function updateConsoleMarquee() {
+  const box = getEl("console-box");
+  const log = getEl("console-log");
+  if (!box || !log) return;
+  log.classList.remove("marquee");
+  log.style.removeProperty("--marquee-dist");
+  log.style.removeProperty("--marquee-time");
+  const overflow = log.scrollWidth - box.clientWidth;
+  if (overflow > 2) {
+    const secs = Math.max(6, overflow / 25 + 3); // ~25px/s plus pauses at each end
+    log.style.setProperty("--marquee-dist", `-${Math.ceil(overflow + 4)}px`);
+    log.style.setProperty("--marquee-time", `${secs.toFixed(1)}s`);
+    void log.offsetWidth; // restart animation
+    log.classList.add("marquee");
+  }
+}
+window.addEventListener("resize", () => updateConsoleMarquee());
 
 function formatDuration(totalSeconds) {
   const hrs = Math.floor(totalSeconds / 3600);
@@ -2116,9 +2269,15 @@ function getRangeShooterIntervalSec() {
   return Math.max(0.35, 1.60 / (1 + ((count - 1) * 0.22)));
 }
 
+// BETA.13: after 25 owned, cost growth drops to 25% of its normal excess
+// (1.42 -> ~1.105) so Tier IV (100 units) is reachable. ownedAfterBuy = count AFTER the purchase.
+function getCostGrowth(baseRate, ownedAfterBuy) {
+  return ownedAfterBuy > 25 ? 1 + (baseRate - 1) * 0.25 : baseRate;
+}
+
 function getRangeShooterSellValue() {
   if ((GameState.rangeShooters || 0) <= 0) return 0;
-  const prevBuyCost = GameState.rangeShooterCost / 1.48;
+  const prevBuyCost = GameState.rangeShooterCost / getCostGrowth(1.48, GameState.rangeShooters);
   return Math.round(prevBuyCost * 0.60 * 100) / 100;
 }
 
@@ -2126,7 +2285,7 @@ function buyRangeShooterStep() {
   if (GameState.funds < GameState.rangeShooterCost) return false;
   GameState.funds -= GameState.rangeShooterCost;
   GameState.rangeShooters = (GameState.rangeShooters || 0) + 1;
-  GameState.rangeShooterCost = Math.round(GameState.rangeShooterCost * 1.48 * 100) / 100;
+  GameState.rangeShooterCost = Math.round(GameState.rangeShooterCost * getCostGrowth(1.48, GameState.rangeShooters) * 100) / 100;
   SoundSystem.playSfx("buy");
   logMessage(`Purchased Range Shooter #${GameState.rangeShooters} (fires every ${getRangeShooterIntervalSec().toFixed(2)}s)!`);
   requestRender();
@@ -2152,7 +2311,7 @@ function triggerAutoShooterShot() {
 
 function isSupplyChainActivelyRunning() {
   if (!GameState.unlockedSupplyChain || !GameState.supplyChainEnabled) return false;
-  return getSupplyPayrollPerSec() <= 0 || GameState.funds > 0;
+  return getSupplyPayrollPerSec() <= 0 || GameState.funds >= getSupplyPayrollPerSec() * 0.2; // matches tick: funds >= payroll * dt (dt = 0.2s)
 }
 
 function getActiveSupplyRates() {
@@ -2225,28 +2384,28 @@ function getSupplyPayrollPerSec() {
 
 function getSaltMineSellValue() {
   if (GameState.saltMines <= 0) return 0;
-  return Math.round((GameState.saltMineCost / 1.45) * 0.60 * 100) / 100;
+  return Math.round((GameState.saltMineCost / getCostGrowth(1.45, GameState.saltMines)) * 0.60 * 100) / 100;
 }
 
 function getWheatFarmSellValue() {
   if (GameState.wheatFarms <= 0) return 0;
-  return Math.round((GameState.wheatFarmCost / 1.45) * 0.60 * 100) / 100;
+  return Math.round((GameState.wheatFarmCost / getCostGrowth(1.45, GameState.wheatFarms)) * 0.60 * 100) / 100;
 }
 
 function getRefinerySellValue() {
   if (GameState.refineries <= 0) return 0;
-  return Math.round((GameState.refineryCost / 1.50) * 0.60 * 100) / 100;
+  return Math.round((GameState.refineryCost / getCostGrowth(1.50, GameState.refineries)) * 0.60 * 100) / 100;
 }
 
 function getTruckSellValue() {
   if (GameState.trucks <= 0) return 0;
-  const prevBuyCost = GameState.truckCost / 1.48;
+  const prevBuyCost = GameState.truckCost / getCostGrowth(1.48, GameState.trucks);
   return Math.round(prevBuyCost * 0.60 * 100) / 100;
 }
 
 function getDroneSellValue() {
   if (GameState.drones <= 0) return 0;
-  const prevBuyCost = GameState.droneCost / 1.55;
+  const prevBuyCost = GameState.droneCost / getCostGrowth(1.55, GameState.drones);
   return Math.round(prevBuyCost * 0.60 * 100) / 100;
 }
 
@@ -2271,7 +2430,7 @@ function handleManualBake() {
     requestRender();
     return;
   }
-  const baked = bakePretzels(GameState.clickPower || 1);
+  const baked = bakePretzels((GameState.clickPower || 1) * getBuffMult("production"));
   if (baked > 0) {
     recordManualBakeRate(baked);
     spawnSubtleClickPop(bakeBtn, `🥨 +${baked}`);
@@ -2305,7 +2464,7 @@ function buySaltMineStep() {
   const prevTier = getModuleTierInfo(GameState.saltMines).tier;
   GameState.funds -= GameState.saltMineCost;
   GameState.saltMines += 1;
-  GameState.saltMineCost = Math.round(GameState.saltMineCost * 1.45 * 100) / 100;
+  GameState.saltMineCost = Math.round(GameState.saltMineCost * getCostGrowth(1.45, GameState.saltMines) * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.saltMines);
   SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
@@ -2320,7 +2479,7 @@ function buyWheatFarmStep() {
   const prevTier = getModuleTierInfo(GameState.wheatFarms).tier;
   GameState.funds -= GameState.wheatFarmCost;
   GameState.wheatFarms += 1;
-  GameState.wheatFarmCost = Math.round(GameState.wheatFarmCost * 1.45 * 100) / 100;
+  GameState.wheatFarmCost = Math.round(GameState.wheatFarmCost * getCostGrowth(1.45, GameState.wheatFarms) * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.wheatFarms);
   SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
@@ -2335,7 +2494,7 @@ function buyRefineryStep() {
   const prevTier = getModuleTierInfo(GameState.refineries).tier;
   GameState.funds -= GameState.refineryCost;
   GameState.refineries += 1;
-  GameState.refineryCost = Math.round(GameState.refineryCost * 1.50 * 100) / 100;
+  GameState.refineryCost = Math.round(GameState.refineryCost * getCostGrowth(1.50, GameState.refineries) * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.refineries);
   SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
@@ -2369,7 +2528,7 @@ function buyExtruderStep() {
   const prevTier = getModuleTierInfo(GameState.extruders).tier;
   GameState.funds -= GameState.extruderCost;
   GameState.extruders += 1;
-  GameState.extruderCost = Math.round(GameState.extruderCost * 1.42 * 100) / 100;
+  GameState.extruderCost = Math.round(GameState.extruderCost * getCostGrowth(1.42, GameState.extruders) * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.extruders);
   SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
@@ -2384,7 +2543,7 @@ function buyTruckStep() {
   const prevTier = getModuleTierInfo(GameState.trucks).tier;
   GameState.funds -= GameState.truckCost;
   GameState.trucks += 1;
-  GameState.truckCost = Math.round(GameState.truckCost * 1.48 * 100) / 100;
+  GameState.truckCost = Math.round(GameState.truckCost * getCostGrowth(1.48, GameState.trucks) * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.trucks);
   SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
@@ -2399,7 +2558,7 @@ function buyDroneStep() {
   const prevTier = getModuleTierInfo(GameState.drones).tier;
   GameState.funds -= GameState.droneCost;
   GameState.drones += 1;
-  GameState.droneCost = Math.round(GameState.droneCost * 1.55 * 100) / 100;
+  GameState.droneCost = Math.round(GameState.droneCost * getCostGrowth(1.55, GameState.drones) * 100) / 100;
   const newTierInfo = getModuleTierInfo(GameState.drones);
   SoundSystem.playSfx("buy");
   if (newTierInfo.tier > prevTier) {
@@ -2441,13 +2600,44 @@ function refreshRecipeDropdown() {
   });
 }
 
-function updateDemand() {
+function getDemandAtPrice(price) {
   const recipe = getSafeRecipe();
   const promoTierMult = getModuleTierInfo(GameState.promoLevel).mult;
   const promoMult = (1 + ((GameState.promoLevel - 1) * 0.20)) * promoTierMult;
-  const priceElasticity = Math.pow(0.50 / GameState.price, 1.18);
+  const priceElasticity = Math.pow(0.50 / price, 1.18);
   const rawDemand = priceElasticity * 100 * GameState.demandBonus * recipe.demandMult * promoMult;
-  GameState.demand = Math.max(1, Math.round(rawDemand));
+  return Math.max(1, Math.round(rawDemand));
+}
+
+function updateDemand() {
+  GameState.demand = getDemandAtPrice(GameState.price);
+}
+
+// BETA.13 Auto-Pricer: highest base price at which sales/sec still >= production/sec.
+// Above it inventory piles up; below it you give away margin (demand elasticity is 1.18 > 1,
+// so revenue falls as price rises on the demand-limited side).
+function getAutoPriceTarget() {
+  const supply = GameState.extruders * GameState.extruderSpeed * getModuleTierInfo(GameState.extruders).mult;
+  if (!(supply > 0)) return GameState.price;
+  const maxDelivery = getEffectiveMaxDelivery();
+  const salesAt = (cents) => maxDelivery * getDemandAtPrice(cents / 100) / 100;
+  let lo = 5;      // $0.05 (game minimum)
+  let hi = 10000;  // $100.00 cap
+  if (salesAt(hi) >= supply) return hi / 100;
+  if (salesAt(lo) < supply) return lo / 100;
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (salesAt(mid) >= supply) lo = mid; else hi = mid;
+  }
+  return lo / 100;
+}
+
+function applyAutoPrice() {
+  const target = getAutoPriceTarget();
+  if (target > 0 && target !== GameState.price) {
+    GameState.price = target;
+    updateDemand();
+  }
 }
 
 function getActiveRangeTargets() {
@@ -2732,6 +2922,7 @@ function resetRegionalPanelsUI() {
   hideEl("income-rate-line");
   hideEl("recipe-box");
   hideEl("btn-toggle-autodough");
+  hideEl("btn-toggle-autopricer");
   hideEl("panel-hand-dough");
   hideEl("panel-automation");
   hideEl("system-supply-chain");
@@ -2771,6 +2962,7 @@ function applySessionUI() {
 
   if (GameState.unlockedIncomeTicker) showEl("income-rate-line");
   if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
+  if (GameState.unlockedAutoPricer) showEl("btn-toggle-autopricer");
   if (GameState.unlockedAutomation) showEl("panel-automation");
   if (GameState.unlockedSupplyChain) {
     showEl("system-supply-chain");
@@ -2837,6 +3029,8 @@ function completeContinentExpansion() {
   const unlockedTheme = THEMES_CATALOG.find(t => !t.requiresGoldUi && !t.requiresAllAchievements && !t.requiresSubHourWin && t.minContinent === (GameState.continentIndex || 0));
   const themeNotice = unlockedTheme ? ` New Theme Unlocked: ${unlockedTheme.name}!` : "";
   logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!${themeNotice}`);
+  // News: announce the new continent right away (once-only; deduped via newsSeen).
+  if (typeof checkNewsMilestones === "function") checkNewsMilestones();
   requestRender();
 }
 
@@ -2899,6 +3093,7 @@ function bindControls() {
   });
 
   onClick("btn-bake", handleManualBake);
+  onClick("mobile-btn-bake", handleManualBake);
 
   onClick("btn-cloud-login", async () => {
     const email = (getEl("cloud-email")?.value || "").trim();
@@ -2990,6 +3185,12 @@ function bindControls() {
     requestRender();
   });
 
+  onClick("btn-toggle-autopricer", () => {
+    GameState.autoPricerEnabled = !GameState.autoPricerEnabled;
+    if (GameState.autoPricerEnabled) applyAutoPrice();
+    requestRender();
+  });
+
   onClick("btn-toggle-supply", () => {
     GameState.supplyChainEnabled = !GameState.supplyChainEnabled;
     logMessage(`Supply Chain workers ${GameState.supplyChainEnabled ? "resumed" : "paused"}.`);
@@ -3012,7 +3213,7 @@ function bindControls() {
       const baseCost = Math.round(2500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.saltMineCost = GameState.saltMines === 0
         ? baseCost
-        : Math.round((GameState.saltMineCost / 1.45) * 100) / 100;
+        : Math.round((GameState.saltMineCost / getCostGrowth(1.45, GameState.saltMines + 1)) * 100) / 100;
       logMessage(`Sold 1 Rock Salt Mine for +$${refund.toFixed(2)}.`);
       GameState.save(true);
       requestRender();
@@ -3035,7 +3236,7 @@ function bindControls() {
       const baseCost = Math.round(4000.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.wheatFarmCost = GameState.wheatFarms === 0
         ? baseCost
-        : Math.round((GameState.wheatFarmCost / 1.45) * 100) / 100;
+        : Math.round((GameState.wheatFarmCost / getCostGrowth(1.45, GameState.wheatFarms + 1)) * 100) / 100;
       logMessage(`Sold 1 Winter Wheat Field for +$${refund.toFixed(2)}.`);
       GameState.save(true);
       requestRender();
@@ -3058,7 +3259,7 @@ function bindControls() {
       const baseCost = Math.round(8500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.refineryCost = GameState.refineries === 0
         ? baseCost
-        : Math.round((GameState.refineryCost / 1.50) * 100) / 100;
+        : Math.round((GameState.refineryCost / getCostGrowth(1.50, GameState.refineries + 1)) * 100) / 100;
       if (GameState.refineries === 0) hideEl("refinery-rate-wrap");
       logMessage(`Sold 1 Dough Refinery for +$${refund.toFixed(2)}.`);
       GameState.save(true);
@@ -3213,7 +3414,7 @@ function bindControls() {
       const baseCost = Math.round(250.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.truckCost = GameState.trucks === 0
         ? baseCost
-        : Math.round((GameState.truckCost / 1.48) * 100) / 100;
+        : Math.round((GameState.truckCost / getCostGrowth(1.48, GameState.trucks + 1)) * 100) / 100;
       logMessage(`Sold 1 Delivery Truck for +$${refund.toFixed(2)}.`);
       GameState.save(true);
       requestRender();
@@ -3236,7 +3437,7 @@ function bindControls() {
       const baseCost = Math.round(5000.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.droneCost = GameState.drones === 0
         ? baseCost
-        : Math.round((GameState.droneCost / 1.55) * 100) / 100;
+        : Math.round((GameState.droneCost / getCostGrowth(1.55, GameState.drones + 1)) * 100) / 100;
       logMessage(`Sold 1 Pretzel Drone for +$${refund.toFixed(2)}.`);
       GameState.save(true);
       requestRender();
@@ -3261,7 +3462,7 @@ function bindControls() {
       const baseCost = Math.round(2500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
       GameState.rangeShooterCost = GameState.rangeShooters === 0
         ? baseCost
-        : Math.round((GameState.rangeShooterCost / 1.48) * 100) / 100;
+        : Math.round((GameState.rangeShooterCost / getCostGrowth(1.48, GameState.rangeShooters + 1)) * 100) / 100;
       logMessage(`Sold 1 Range Shooter for +$${refund.toFixed(2)}.`);
       GameState.save(true);
       requestRender();
@@ -3451,6 +3652,10 @@ function render() {
   setText("inventory", wholeInventory.toLocaleString());
   setText("rp-total", Math.floor(GameState.researchPoints).toLocaleString());
   setText("price", GameState.price.toFixed(2));
+  const autoPricerOn = Boolean(GameState.unlockedAutoPricer && GameState.autoPricerEnabled);
+  if (GameState.unlockedAutoPricer) setText("btn-toggle-autopricer", `Auto-Pricer: ${autoPricerOn ? "ON" : "OFF"}`);
+  setDisabled("btn-price-up", autoPricerOn);
+  setDisabled("btn-price-down", autoPricerOn);
   setText("effective-price", netPrice.toFixed(2));
   setText("demand", GameState.demand);
   setText("click-power", GameState.clickPower);
@@ -3536,6 +3741,8 @@ function render() {
   setText("dough-cost", FMT2.format(GameState.doughCost));
   setDisabled("btn-buy-dough", !canAffordDough);
   setDisabled("btn-bake", GameState.dough < 1);
+  setText("mobile-funds", formattedFunds);
+  setDisabled("mobile-btn-bake", GameState.dough < 1);
   setText("knead-progress", GameState.kneadClicks);
 
   setDisabled("btn-drop-plinko", Boolean(plinkoBall) || wholeInventory < PLINKO_COST);
@@ -3709,6 +3916,142 @@ function animateMinigames(timestamp) {
   requestAnimationFrame(animateMinigames);
 }
 
+// ---- Timed buffs. effects keys: production, income, demand (multipliers). ----
+function addBuff(id, label, effects, seconds) {
+  if (!Array.isArray(GameState.activeBuffs)) GameState.activeBuffs = [];
+  const existing = GameState.activeBuffs.find(b => b.id === id);
+  if (existing) {
+    existing.label = label;
+    existing.effects = effects;
+    existing.remaining = seconds;
+    existing.duration = seconds;
+  } else {
+    GameState.activeBuffs.push({ id, label, effects, duration: seconds, remaining: seconds });
+  }
+  renderBuffBar();
+}
+
+function getBuffMult(key) {
+  if (GameState._simulatingOffline) return 1;
+  let mult = 1;
+  for (const buff of GameState.activeBuffs || []) {
+    const v = buff.effects && buff.effects[key];
+    if (v > 0) mult *= v;
+  }
+  return mult;
+}
+
+function tickBuffs(dt) {
+  const buffs = GameState.activeBuffs;
+  if (!buffs || buffs.length === 0) return;
+  for (let i = buffs.length - 1; i >= 0; i--) {
+    buffs[i].remaining -= dt;
+    if (buffs[i].remaining <= 0) buffs.splice(i, 1);
+  }
+  renderBuffBar();
+}
+
+let lastBuffBarSig = null;
+function renderBuffBar() {
+  const bar = document.getElementById("buff-bar");
+  if (!bar) return;
+  const buffs = GameState.activeBuffs || [];
+  // Signature includes m:ss, so the DOM only updates when the list or a displayed second changes.
+  const sig = buffs.map(b => {
+    const s = Math.max(0, Math.ceil(b.remaining));
+    return `${b.id}|${b.label}|${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }).join(";");
+  if (sig === lastBuffBarSig) return;
+  lastBuffBarSig = sig;
+  bar.classList.toggle("hidden", buffs.length === 0);
+  bar.textContent = "";
+  for (const b of buffs) {
+    const s = Math.max(0, Math.ceil(b.remaining));
+    const pill = document.createElement("span");
+    pill.className = "buff-pill";
+    pill.textContent = `${b.label} ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    bar.appendChild(pill);
+  }
+}
+
+window.debugAddBuff = addBuff;
+
+// BETA.13: shared economy step used by the live tick AND offline catch-up.
+function simulateEconomyStep(dt) {
+  let tickNetCash = 0;
+  let tickRefinedDough = 0;
+
+  if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
+    const tickPayroll = getSupplyPayrollPerSec() * dt;
+    if (tickPayroll <= 0 || GameState.funds >= tickPayroll) {
+      if (tickPayroll > 0) {
+        GameState.funds -= tickPayroll;
+        tickNetCash -= tickPayroll;
+      }
+
+      const saltMult = getModuleTierInfo(GameState.saltMines).mult * (GameState.saltRateMult || 1);
+      const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
+      const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
+
+      GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) * dt;
+      GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) * dt;
+
+      if (GameState.refineries > 0) {
+        const maxRefineCapacity = (GameState.refineries * REFINERY_BASE_RATE * refineryMult) * dt;
+        const actualRefined = Math.min(maxRefineCapacity, GameState.salt, GameState.wheat);
+        if (actualRefined > 0) {
+          GameState.salt -= actualRefined;
+          GameState.wheat -= actualRefined;
+          GameState.dough += actualRefined;
+          tickRefinedDough = actualRefined;
+        }
+      }
+    }
+  }
+
+  const batchSize = GameState.doughBatchSize || 500;
+  const extruderMult = getModuleTierInfo(GameState.extruders).mult;
+  const rawBakeRate = GameState.extruders * GameState.extruderSpeed * extruderMult * getBuffMult("production");
+  const autoThreshold = Math.max(100, batchSize * 0.25, rawBakeRate * dt);
+  if (GameState.unlockedAutoDough && GameState.autoDoughEnabled && GameState.dough < autoThreshold) {
+    let autoBuys = 0;
+    while (GameState.dough < autoThreshold && autoBuys < 200 && buyDoughBatch(true)) autoBuys++;
+  }
+  if (rawBakeRate > 0) {
+    const requestedTickBake = rawBakeRate * dt;
+    const fromExistingDough = Math.min(GameState.dough, requestedTickBake);
+    if (fromExistingDough > 0) {
+      bakePretzels(fromExistingDough);
+    }
+    const leftoverNeed = requestedTickBake - fromExistingDough;
+    if (leftoverNeed > 0 && tickRefinedDough > 0) {
+      bakePretzels(Math.min(GameState.dough, tickRefinedDough, leftoverNeed));
+    }
+  }
+
+  if (GameState.inventory > 0) {
+    const maxDelivery = getEffectiveMaxDelivery();
+    const demandFactor = (GameState.demand / 100) * getBuffMult("demand");
+    const netPrice = getEffectivePriceSafe();
+    pendingSales += (maxDelivery * demandFactor) * dt;
+
+    if (pendingSales >= 1) {
+      const wantToSell = Math.floor(pendingSales);
+      const actualSold = Math.min(GameState.inventory, wantToSell);
+      if (actualSold > 0) {
+        GameState.inventory -= actualSold;
+        const salesCash = actualSold * netPrice * getBuffMult("income");
+        GameState.funds += salesCash;
+        tickNetCash += salesCash;
+        pendingSales -= actualSold;
+      }
+    }
+  } else {
+    pendingSales = 0;
+  }
+  return tickNetCash;
+}
+
 async function bootGame() {
   initStarfieldBackdrop();
   applyTabPretzelIconAndTitle(0);
@@ -3805,77 +4148,8 @@ async function bootGame() {
       GameState.recordRunProgress(wholeSecs);
     }
 
-    let tickNetCash = 0;
-    let tickRefinedDough = 0;
-
-    if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
-      const tickPayroll = getSupplyPayrollPerSec() * dt;
-      if (tickPayroll <= 0 || GameState.funds >= tickPayroll) {
-        if (tickPayroll > 0) {
-          GameState.funds -= tickPayroll;
-          tickNetCash -= tickPayroll;
-        }
-
-        const saltMult = getModuleTierInfo(GameState.saltMines).mult * (GameState.saltRateMult || 1);
-        const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
-        const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
-
-        GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) * dt;
-        GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) * dt;
-
-        if (GameState.refineries > 0) {
-          const maxRefineCapacity = (GameState.refineries * REFINERY_BASE_RATE * refineryMult) * dt;
-          const actualRefined = Math.min(maxRefineCapacity, GameState.salt, GameState.wheat);
-          if (actualRefined > 0) {
-            GameState.salt -= actualRefined;
-            GameState.wheat -= actualRefined;
-            GameState.dough += actualRefined;
-            tickRefinedDough = actualRefined;
-          }
-        }
-      }
-    }
-
-    const batchSize = GameState.doughBatchSize || 500;
-    const extruderMult = getModuleTierInfo(GameState.extruders).mult;
-    const rawBakeRate = GameState.extruders * GameState.extruderSpeed * extruderMult;
-    const autoThreshold = Math.max(100, batchSize * 0.25, rawBakeRate * dt);
-    if (GameState.unlockedAutoDough && GameState.autoDoughEnabled && GameState.dough < autoThreshold) {
-      let autoBuys = 0;
-      while (GameState.dough < autoThreshold && autoBuys < 200 && buyDoughBatch(true)) autoBuys++;
-    }
-    if (rawBakeRate > 0) {
-      const requestedTickBake = rawBakeRate * dt;
-      const fromExistingDough = Math.min(GameState.dough, requestedTickBake);
-      if (fromExistingDough > 0) {
-        bakePretzels(fromExistingDough);
-      }
-      const leftoverNeed = requestedTickBake - fromExistingDough;
-      if (leftoverNeed > 0 && tickRefinedDough > 0) {
-        bakePretzels(Math.min(GameState.dough, tickRefinedDough, leftoverNeed));
-      }
-    }
-
-    if (GameState.inventory > 0) {
-      const maxDelivery = getEffectiveMaxDelivery();
-      const demandFactor = GameState.demand / 100;
-      const netPrice = getEffectivePriceSafe();
-      pendingSales += (maxDelivery * demandFactor) * dt;
-
-      if (pendingSales >= 1) {
-        const wantToSell = Math.floor(pendingSales);
-        const actualSold = Math.min(GameState.inventory, wantToSell);
-        if (actualSold > 0) {
-          GameState.inventory -= actualSold;
-          const salesCash = actualSold * netPrice;
-          GameState.funds += salesCash;
-          tickNetCash += salesCash;
-          pendingSales -= actualSold;
-        }
-      }
-    } else {
-      pendingSales = 0;
-    }
+    const tickNetCash = simulateEconomyStep(dt);
+    tickBuffs(dt);
 
     GameState.recordRunProgress(0);
 
@@ -3896,7 +4170,9 @@ async function bootGame() {
     slowCheckCounter += 1;
     if (slowCheckCounter >= 3) {
       slowCheckCounter = 0;
+      if (GameState.unlockedAutoPricer && GameState.autoPricerEnabled) applyAutoPrice();
       checkUnlocks();
+      if (typeof checkNewsMilestones === "function") checkNewsMilestones();
       if (typeof AchievementManager !== "undefined") {
         AchievementManager.checkAll();
         AchievementManager.updateButtonCount();
@@ -3916,17 +4192,26 @@ async function bootGame() {
   }, 15000);
 
   setInterval(() => {
-    if (typeof GameState !== "undefined" && GameState.started) {
+    if (typeof GameState !== "undefined" && GameState.started && Math.random() < SHOOTING_STAR_CHANCE) {
       spawnRareShootingStar(true);
     }
-  }, SHOOTING_STAR_INTERVAL_MS);
+  }, SHOOTING_STAR_CHECK_MS);
+  scheduleStarTwinkle();
 
   const flushOnLeave = () => {
     if (GameState.started) GameState.saveOnExit();
   };
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) flushOnLeave();
-    else requestRender();
+    if (document.hidden) {
+      flushOnLeave();
+      if (SoundSystem.bgmEl) SoundSystem.bgmEl.pause();
+    } else {
+      requestRender();
+      if (SoundSystem.enabledMusic && SoundSystem.bgmEl) {
+        SoundSystem.ensureContext();
+        SoundSystem.playBgm();
+      }
+    }
   });
   window.addEventListener("pagehide", flushOnLeave);
 }

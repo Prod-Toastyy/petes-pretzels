@@ -1,0 +1,180 @@
+Satirical newspaper headlines for "Pete's Pretzels" (an idle game).
+
+           Exactly 100 headlines.
+           One per line.
+           No numbering, bullets, quotes around the lines (except in the JS array), no blank lines.
+           Max 90 characters per headline.
+           Tone: Silly, deadpan, absurd (The Onion style), family-friendly.
+           Content: Pretzel, dough, salt, mustard, ovens, carbs, Pete. No repeats of the same joke.
+           Constraints: No specific dollar amounts, no specific pretzel counts, no real brands/people.
+           Distribution:
+               30 General bakery nonsense (Strings).
+               6 per continent for 7 continents = 42 (Objects with minContinent).
+               28 Money/Production/Logistics (Strings).
+               Wait, 30 + 42 + 28 = 100. Perfect.
+
+           JS array body only (e.g., ["string",, { text: "...", minContinent: 0 },).
+           No commentary.
+           Strings double-quoted.
+
+       General Bakery Nonsense (30):
+        1. Pete declares dough "emotionally ready" for the oven.
+        2. Local baker claims yeast is just "enthusiastic air."
+        3. Scientists find saltiness levels exceed historical norms.
+        4. Town square filled with flour as Pete celebrates "Grain Day."
+        5. Bakery atmosphere described as "aggressively carb-heavy."
+        6. Flour shortage blamed on "too much enthusiasm" from local bakers.
+        7. Bread-related tensions rise over gluten-free debate.
+        8. Pete introduces "Passive-Aggressive Salt" for extra kick.
+        9. Dough rising rate described as "uncomfortably ambitious."
+        10. Baker claims yeast is "the only thing keeping me sane."
+        11. Local woman claims pretzel gave her "existential clarity."
+        12. Bakery floor declared a "No-No-Running Zone" due to flour.
+        13. Pete's oven reaches "spiritual temperature" during peak hours.
+        14. Flour-covered child hailed as "Master of the Knead."
+        15. "Is it a pretzel or a hug?" - Bakery website remains undecided.
+        16. Neighborhood observes "Great Kneading" of 2026.
+        17. Salt crystals found to have "judgmental personalities."
+        18. Yeast colony voted "Most Productive Resident" of the bakery.
+        19. Pete declares flour a "primary personality trait."
+        20. Local resident claims pretzel is "actually a very long hug."
+        21. Baking competition ends in "Mutual Carb Agreement."
+        22. Dough's rise trajectory compared to local stock market.
+        23. Pete insists yeast is a "team player."
+        24. Bakery scent declared a "public service" by city council.
+        25. Flour dusting ceremony becomes mandatory for all staff.
+        26. "Too much salt" ruled a subjective culinary experience.
+        27. Dough's texture described as "confidently chewy."
+        28. Pete's secret ingredient revealed to be "Optimism."
+        29. Bakery staff trained in "Advanced Kneading Techniques."
+        30. Local man claims he can hear the dough whispering.
+
+       Continental Headlines (6 each = 42):
+           North America (0):
+            1. { text: "Pretzel delivery drones mistaken for migratory birds.", minContinent: 0 },
+        2. { text: "Pretzel shortage causes minor panic in local taco stand.", minContinent: 0 },
+        3. { text: "North American pretzel belt now officially 'Infinite'.", minContinent: 0 },
+        4. { text: "Pretzel truck takes scenic route to reach every cul-de-sac.", minContinent: 0 },
+        5. { text: "Baker Pete spotted attempting to knead an entire mountain.", minContinent: 0 },
+        6. { text: "Regional pretzel density reaches 'Heavy' status.", minContinent: 0 },
+           South America (1):
+        7. { text: "Pretzel logistics hub takes over local carnival.", minContinent: 1 },
+        8. { text: "Local baker claims pretzel 'energy' is powering the dance.", minContinent: 1 },
+        9. { text: "Pretzel delivery fleet navigates Amazonian jungle for snacks.", minContinent: 1 },
+        10. { text: "Pretzel dough found to be highly aerodynamic in tropical winds.", minContinent: 1 },
+        11. { text: "Pretzel-themed festival declared a cultural triumph.", minContinent: 1 },
+        12. { text: "New pretzel variety launched to match local vibrant colors.", minContinent: 1 },
+           Europe (2):
+        13. { text: "Pretzel authenticity debated in village square for three days.", minContinent: 2 },
+        14. { text: "Artisanal pretzel bakery takes over historic castle ruin.", minContinent: 2 },
+        15. { text: "Pretzel shortage declared a 'Minor Tragedy' by local council.", minContinent: 2 },
+        16. { text: "Pretzel-shaped monuments erected in honor of Pete's vision.", minContinent: 2 },
+        17. { text: "Pretzel logistics network mirrors ancient trade routes.", minContinent: 2 },
+        18. { text: "Pretzel dough's rise noted by local architects for inspiration.", minContinent: 2 },
+           Africa (3):
+        19. { text: "Pretzel distribution reaches remote savannah outposts.", minContinent: 3 },
+        20. { text: "Pretzel-inspired oven designs take hold in regional hubs.", minContinent: 3 },
+        21. { text: "Pretzel logistics team masters desert terrain for snack delivery.", minContinent: 3 },
+        22. { text: "Pretzel dough considered a 'High-Carb Treasure'.", minContinent: 3 },
+        23. { text: "Pretzel production centers celebrate local festival with salt.", minContinent: 3 },
+        24. { text: "Pretzel supply chain pioneers new delivery method for plains.", minContinent: 3 },
+           Asia (4):
+        25. { text: "Pretzel delivery drones navigate neon-lit skyscrapers.", minContinent: 4 },
+        26. { text: "Pretzel bakery competition reaches fever pitch in metro hubs.", minContinent: 4 },
+        27. { text: "Pretzel dough rise compared to morning commute traffic.", minContinent: 4 },
+        28. { text: "Pretzel distribution team navigates massive urban networks.", minContinent: 4 },
+        29. { text: "Pretzel-inspired designs trend across social networks.", minContinent: 4 },
+        30. { text: "Petes pretzel empire expands into high-tech city centers.", minContinent: 4 },
+           Oceania (5):
+        31. { text: "Pretzel shipment arrives on surfboard for coastal deliveries.", minContinent: 5 },
+        32. { text: "Pretzel dough endurance tested in extreme heat waves.", minContinent: 5 },
+        33. { text: "Pretzel logistics hub establishes 'Island Hopping' route.", minContinent: 5 },
+        34. { text: "Pretzel-themed beach party becomes local staple.", minContinent: 5 },
+        35. { text: "Pretzel transport drones avoid local coastal waters.", minContinent: 5 },
+        36. { text: "Pretzel bakery expansion sights tropical paradise.", minContinent: 5 },
+           Antarctica (6):
+        37. { text: "Pretzel shipment arrives via icebreaker for frozen snacks.", minContinent: 6 },
+        38. { text: "Pretzel production reaches sub-zero efficiency records.", minContinent: 6 },
+        39. { text: "Pretzel-shaped research base declared a 'Comfort Hub'.", minContinent: 6 },
+        40. { text: "Pretzel dough resists freezing in extreme conditions.", minContinent: 6 },
+        41. { text: "Pretzel logistics team pioneers arctic delivery methods.", minContinent: 6 },
+        42. { text: "Pretzel-based survival kit distributed to research team.", minContinent: 6 },
+
+       Money, Production, Logistics (28):
+        43. Pete declares warehouse capacity "excessively spacious."
+        44. Factory automation replaces manual kneading with "Mechanical Hugs."
+        45. Trucking fleet expands to include specialized pretzel-cradles.
+        46. Production line achieves "Uncanny Level of Consistency."
+        47. Warehouse staff reports "Pretzel-induced productivity."
+        48. Logistic drone fleet learns to navigate through flour clouds.
+        49. Production hub expands to accommodate "Massive Dough Storage."
+        50. Factory workers call it "The Great Knead of the Century."
+        51. Trucking schedule now includes "Pretzel Nap Time."
+        52. Supply chain reaches "Peak Bread-Logistics" status.
+        53. Factory capacity exceeds local demand, fueling global hunger.
+        54. Warehouse layout optimized for "Rapid Pretzel Deployment."
+        55. Logistics fleet expands into high-altitude drone territory.
+        56. Production line creates "Perfectly Symmetric" carbs.
+        57. Factory sensors detect "High Levels of Baking Passion."
+        58. Trucking network achieves 100% "Salt-to-Dough" integrity.
+        59. Warehouse expansion hailed as a "Monument to Carbs."
+        60. Automated kneading robots praised for "Soulful Motion."
+        61. Logistics hub establishes "Priority Pretzel" lanes.
+        62. Production scale allows for "Pretzel-Based Diplomacy."
+        63. Warehouse team masters the art of "Sturdy Stacking."
+        64. Trucking route optimized for "Maximum Crust Crispness."
+        65. Factory drone fleet achieves "Perfect Delivery Precision."
+        66. Supply chain manages "Pretzel Avalanche" with ease.
+        67. Production hub sets new record for "Rhythmic Dough Folding."
+        68. Warehouse floor declared a "Pretzel Sanctuary."
+        69. Logistic fleet pioneers "Sub-Orbital Snack Transport."
+        70. Factory production "Hits a Sweet Spot of Scalability."
+        71. Trucking fleet adds "Express Salt" transport vehicles.
+        72. Supply chain becomes a "Symphony of Baked Goods."
+        73. Warehouse expansion provides room for "Endless Dough."
+        74. Logistics team reports "Smooth Sailing" for pretzel cargo.
+        75. Factory floor becomes the "Heartbeat of the Empire."
+
+    Wait, I need to count exactly 100.
+    Current count:
+    General: 30
+    Continental: 42
+    Logistics: 33 (Need to adjust to 28 to hit 100).
+
+    Let's re-verify the numbers:
+    30 (General) + 42 (Continental) + 28 (Logistics) = 100.
+
+    I need 28 Logistics headlines. I have 33. I will remove 5.
+    I also need to ensure I have exactly 30 General.
+
+    Refining the list to exactly 100 total.
+
+    General (30):*
+    1. Pete declares dough "emotionally ready" for the oven.
+    2. Local baker claims yeast is just "enthusiastic air."
+    3. Scientists find saltiness levels exceed historical norms.
+    4. Town square filled with flour as Pete celebrates "Grain Day."
+    5. Bakery atmosphere described as "aggressively carb-heavy."
+    6. Flour shortage blamed on "too much enthusiasm" from local bakers.
+    7. Bread-related tensions rise over gluten-free debate.
+    8. Pete introduces "Passive-Aggressive Salt" for extra kick.
+    9. Dough rising rate described as "uncomfortably ambitious."
+    10. Baker claims yeast is "the only thing keeping me sane."
+    11. Local woman claims pretzel gave her "existential clarity."
+    12. Bakery floor declared a "No-No-Running Zone" due to flour.
+    13. Pete's oven reaches "spiritual temperature" during peak hours.
+    14. Flour-covered child hailed as "Master of the Knead."
+    15. "Is it a pretzel or a hug?" - Bakery website remains undecided.
+    16. Neighborhood observes "Great Kneading" of 2026.
+    17. Salt crystals found to have "judgmental personalities."
+    18. Yeast colony voted "Most Productive Resident" of the bakery.
+    19. Pete declares flour a "primary personality trait."
+    20. Local resident claims pretzel is "actually a very long hug."
+    21. Baking competition ends in "Mutual Carb Agreement."
+    22. Dough's rise trajectory compared to local stock market.
+    23. Pete insists yeast is a "team player."
+    24. Bakery scent declared a "public service" by city council.
+    25. Flour dusting ceremony becomes mandatory for all staff.
+    26. "Too much salt" ruled a subjective culinary experience.
+    27. Dough's texture described as "confidently chewy."
+    28. Pete's secret ingredient revealed to put em in. //////// -nw i kinda wanted them to show up at the top where it says like offline for 6 hours and stuff. but idk ill see hwat you cooked up. i want to rqandomly make the stars rarly twinkle and really rarly havea shooting star. after we do this im releaseing beta 13

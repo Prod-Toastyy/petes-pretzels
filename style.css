@@ -517,6 +517,19 @@ header,
   text-shadow: 0 0 6px rgba(255, 210, 63, 0.35);
 }
 
+.starfield-dot.twinkle {
+  animation: starTwinkle 1.4s ease-in-out 1;
+}
+
+@keyframes starTwinkle {
+  0%, 100% { opacity: var(--star-base, 0.4); transform: scale(1); }
+  45% { opacity: 1; transform: scale(1.7); text-shadow: 0 0 10px rgba(255, 236, 160, 0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starfield-dot.twinkle { animation: none; }
+}
+
 body.theme-light-mode .starfield-layer {
   opacity: 0.22;
   filter: invert(0.65);
@@ -818,7 +831,26 @@ body.golden-rush-active {
   color: var(--accent);
   overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
+}
+
+#console-log {
+  display: inline-block;
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+#console-log.marquee {
+  animation: console-scroll var(--marquee-time, 10s) ease-in-out infinite alternate;
+}
+
+@keyframes console-scroll {
+  0%, 20% { transform: translateX(0); }
+  80%, 100% { transform: translateX(var(--marquee-dist, 0)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #console-log.marquee { animation: none; }
+  #console-box { text-overflow: ellipsis; }
 }
 
 .top-stat-badge {
@@ -929,6 +961,25 @@ header {
   padding: 3px 10px;
   font-size: 11.5px;
   font-weight: 700;
+}
+
+.buff-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.buff-pill {
+  background: rgba(255, 210, 63, 0.14);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 h1 {
@@ -2032,4 +2083,102 @@ button.sell-btn:hover:not(:disabled) {
     font-size: 8px;
     line-height: 1.08;
   }
+}
+
+/* BETA.13: mobile floating bottom bar */
+.mobile-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-surface);
+    border-top: 2px solid var(--border-panel);
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.45);
+  }
+
+  .mobile-bar-funds {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--money-green);
+    white-space: nowrap;
+  }
+
+  .mobile-bar button {
+    flex: 1 1 auto;
+    min-height: 44px;
+    max-width: 220px;
+  }
+
+  /* keep page content and the achievement toast clear of the bar */
+  body {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .ach-toast {
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* News headline: lives inside the top console bar and replaces the console line while showing */
+.news-popup {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.news-popup.hidden { display: none; }
+.news-popup.show { opacity: 1; }
+
+#console-box.news-active #console-log { display: none; }
+
+.news-popup-kicker {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--trophy-gold);
+  font-weight: 700;
+}
+
+.news-popup-viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.news-popup-text {
+  display: inline-block;
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+.news-popup-text.marquee {
+  animation: console-scroll var(--marquee-time, 8s) ease-in-out infinite alternate;
+}
+
+@media (max-width: 768px) {
+  /* the console box already wraps on mobile; let the headline wrap too */
+  .news-popup { flex-wrap: wrap; gap: 2px 10px; }
+  .news-popup-viewport { flex: 1 1 100%; }
+  .news-popup-text { white-space: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-popup { transition: none; }
+  .news-popup-text.marquee { animation: none; }
+  .news-popup-viewport { overflow: visible; }
+  .news-popup-text { white-space: normal; }
 }

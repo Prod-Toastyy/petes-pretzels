@@ -1,4 +1,4 @@
-const GAME_VERSION = "BETA.12";
+const GAME_VERSION = "BETA.13";
 const SAVE_KEY = "petes_pretzels_save_v4";
 const HIGH_SCORES_KEY = "petes_pretzels_high_scores_v1";
 const MAX_OFFLINE_SECONDS = 24 * 60 * 60; // 24 hours max AFK
@@ -122,6 +122,8 @@ const DEFAULT_STATE = {
   doughPurchases: 0,
   unlockedAutoDough: false,
   autoDoughEnabled: false,
+  unlockedAutoPricer: false,
+  autoPricerEnabled: false,
   kneadClicks: 0,
   handMadeDoughTotal: 0,
 
@@ -172,7 +174,9 @@ const DEFAULT_STATE = {
   goldenRushEndTime: 0,
   unlockedIncomeTicker: false,
   completedProjects: [],
-  unlockedAchievements: []
+  unlockedAchievements: [],
+  activeBuffs: [],
+  newsSeen: {}
 };
 
 const GameState = {
@@ -356,6 +360,7 @@ const GameState = {
     const preservedName = this.playerName;
     const preservedAscii = this.selectedAsciiIndex;
     const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
+    const preservedNewsSeen = (this.newsSeen && typeof this.newsSeen === "object" && !Array.isArray(this.newsSeen)) ? { ...this.newsSeen } : {};
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
     const totalPlaySecs = this.totalPlaySecondsAllRuns || 0;
     const nextContinentIdx = prevContinentIdx + 1;
@@ -379,6 +384,7 @@ const GameState = {
     this.playerName = preservedName;
     this.selectedAsciiIndex = preservedAscii;
     this.unlockedAchievements = preservedAchievements;
+    this.newsSeen = preservedNewsSeen;
     this.lifetimePretzelsAllRuns = totalLifetime;
     this.totalPlaySecondsAllRuns = totalPlaySecs;
     this.continentIndex = nextContinentIdx;
@@ -413,6 +419,7 @@ const GameState = {
     const preservedName = this.playerName;
     const preservedAscii = this.selectedAsciiIndex;
     const preservedAchievements = Array.isArray(this.unlockedAchievements) ? [...this.unlockedAchievements] : [];
+    const preservedNewsSeen = (this.newsSeen && typeof this.newsSeen === "object" && !Array.isArray(this.newsSeen)) ? { ...this.newsSeen } : {};
     const totalLifetime = (this.lifetimePretzelsAllRuns || 0) + (this.pretzels || 0);
     const totalPlaySecs = this.totalPlaySecondsAllRuns || 0;
     const totalGold = (this.goldenPretzels || 0) + bonusGold;
@@ -429,6 +436,7 @@ const GameState = {
     this.playerName = preservedName;
     this.selectedAsciiIndex = preservedAscii;
     this.unlockedAchievements = preservedAchievements;
+    this.newsSeen = preservedNewsSeen;
     this.lifetimePretzelsAllRuns = totalLifetime;
     this.totalPlaySecondsAllRuns = totalPlaySecs;
     this.continentIndex = 0;
@@ -466,7 +474,9 @@ const GameState = {
       }
     }
     this.gameVersion = GAME_VERSION;
-   
+    if (!Array.isArray(this.activeBuffs)) this.activeBuffs = [];
+    this.activeBuffs = this.activeBuffs.filter(b => b && b.id && b.remaining > 0);
+    if (!this.newsSeen || typeof this.newsSeen !== "object" || Array.isArray(this.newsSeen)) this.newsSeen = {};
 
     this.syncHighestContinent();
     this.syncPersistentHighScores();
@@ -483,25 +493,19 @@ const GameState = {
     }
 
     if (this.started && elapsedSeconds > 5) {
-      const potentialBake = this.extruders * this.extruderSpeed * elapsedSeconds;
-      if (this.unlockedAutoDough && this.autoDoughEnabled) {
-        const batchesNeeded = Math.ceil(Math.max(0, potentialBake - this.dough) / batchSize);
-        const affordableBatches = Math.min(batchesNeeded, Math.floor(this.funds / this.doughCost));
-        this.funds -= affordableBatches * this.doughCost;
-        this.dough += affordableBatches * batchSize;
+      // BETA.13: run the same economy step the live tick uses, in chunks (<=720 steps, <=120s each).
+      if (typeof simulateEconomyStep === "function") {
+        const steps = Math.min(720, Math.max(1, Math.ceil(elapsedSeconds / 0.2)));
+        const stepDt = elapsedSeconds / steps;
+        // Buffs are frozen while away: getBuffMult() returns 1 during catch-up.
+        this._simulatingOffline = true;
+        try {
+          for (let i = 0; i < steps; i++) simulateEconomyStep(stepDt);
+        } finally {
+          this._simulatingOffline = false;
+        }
+        this.recordRunProgress(0);
       }
-
-      const produced = Math.min(this.dough, potentialBake);
-      this.dough -= produced;
-      this.pretzels += produced;
-      this.inventory += produced;
-
-      const demandFactor = this.demand / 100;
-      const maxSell = this.getMaxDeliveryRate() * demandFactor * elapsedSeconds;
-      const sold = Math.min(this.inventory, maxSell);
-      this.inventory -= sold;
-      this.funds += sold * this.getEffectivePrice();
-      this.recordRunProgress(0);
 
       return elapsedSeconds;
     }

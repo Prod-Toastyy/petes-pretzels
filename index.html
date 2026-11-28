@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Pete's Pretzels</title>
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="manifest" href="manifest.json">
@@ -38,7 +38,7 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA.12 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
+    <div class="intro-bottom-version">BETA.13 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
   </div>
 
   <!-- Start Setup -->
@@ -311,6 +311,11 @@
   <div class="top-bar">
     <div id="console-box">
       <div id="console-log">> Pete's Pretzels</div>
+      <!-- News headline: replaces the console line for a few seconds (non-blocking, auto-dismiss) -->
+      <div id="news-popup" class="news-popup hidden" role="status" aria-live="polite">
+        <span id="news-popup-kicker" class="news-popup-kicker">BREAKING NEWS</span>
+        <span class="news-popup-viewport"><span id="news-popup-text" class="news-popup-text"></span></span>
+      </div>
     </div>
     <div id="golden-rush-badge" class="golden-rush-badge hidden">
       ★ GOLDEN RUSH: <strong id="golden-rush-timer">30</strong>s (2x Cash)
@@ -334,6 +339,7 @@
         <span class="territory-pill">[🌎] <strong id="header-continent-name">North America</strong></span>
         <span id="header-gold-pill" class="gold-pill hidden">[🥨★] <strong id="header-gold-count">0</strong> (<span id="header-gold-bonus">+0%</span>)</span>
       </div>
+      <div id="buff-bar" class="buff-bar hidden"></div>
       <h1>Pretzels Baked: <span id="pretzels-total">0</span></h1>
       <p class="subtext">
         Rate: <span id="bake-rate">0.0</span>/sec baked
@@ -385,6 +391,7 @@
             <button id="btn-price-down">Lower Price</button>
             <button id="btn-price-up">Raise Price</button>
           </div>
+          <button id="btn-toggle-autopricer" class="hidden">Auto-Pricer: OFF</button>
           <p class="subtext">Public Demand: <span id="demand">100</span>%</p>
         </div>
 
@@ -557,6 +564,12 @@
 
   </main>
 
+  <!-- BETA.13: mobile-only floating bottom bar (shown via CSS at max-width: 768px) -->
+  <div id="mobile-bar" class="mobile-bar">
+    <div class="mobile-bar-funds">$<span id="mobile-funds">0.00</span></div>
+    <button id="mobile-btn-bake" class="primary-btn">[🥨] Bake Pretzel</button>
+  </div>
+
   <!-- Bottom-Center Achievement Pop-Up Toast -->
   <div id="achievement-toast" class="ach-toast hidden">
     <div class="ach-toast-kicker">ACHIEVEMENT UNLOCKED</div>
@@ -567,6 +580,8 @@
   <script defer src="ascii.js"></script>
   <script defer src="supabase.js"></script>
   <script defer src="state.js"></script>
+  <script defer src="news-data.js"></script>
+  <script defer src="news.js"></script>
   <script defer src="achievements.js"></script>
   <script defer src="main.js"></script>
 </body>

@@ -197,7 +197,7 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
-const LEADERBOARD_VERSION = "BETA.12";
+const LEADERBOARD_VERSION = "BETA.13";
 const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
 const LEADERBOARD_MAX_ROWS = 10;
 const LEADERBOARD_PUSH_INTERVAL_MS = 60 * 1000;   // post my score at most once a minute (only if it changed)
@@ -348,7 +348,6 @@ async function syncAndFetchLeaderboard(force = false) {
       let query = client
         .from("shop_leaderboard")
         .select("user_id, shop_key, shop_name, pretzels_all_runs, best_win_seconds, completed_full_run")
-        .eq("game_version", LEADERBOARD_VERSION)
         .limit(LEADERBOARD_MAX_ROWS);
 
       if (activeLeaderboardMode === "time") {
@@ -455,8 +454,8 @@ function renderLeaderboard() {
     emptyRow.className = "leaderboard-row";
     const msg = document.createElement("span");
     msg.textContent = timeMode
-      ? `No full 7-continent run times posted yet in ${LEADERBOARD_VERSION}.`
-      : `No ${LEADERBOARD_VERSION} scores posted yet.`;
+      ? "No full 7-continent run times posted yet."
+      : "No scores posted yet.";
     const dash = document.createElement("strong");
     dash.textContent = "—";
     emptyRow.append(msg, dash);
@@ -644,6 +643,7 @@ const AchievementManager = {
       if (!unlocked.includes(ach.id) && ach.check(GameState)) {
         unlocked.push(ach.id);
         this.queue.push(ach);
+        if (typeof NewsSystem !== "undefined") NewsSystem.onAchievement(ach);
         newlyUnlocked = true;
       }
     });
