@@ -3178,6 +3178,7 @@ function applySessionUI() {
   if (!GameState.started) return;
   setText("display-player-name", GameState.playerName || "Baker");
 
+  if (GameState.unlockedAutomation || GameState.extruders > 0) showEl("panel-automation");
   if (GameState.unlockedSupplyChain) showEl("system-supply-chain");
   if (GameState.unlockedTrucks || GameState.unlockedDrones) showEl("system-delivery");
   if (GameState.unlockedTrucks) showEl("panel-trucks");
