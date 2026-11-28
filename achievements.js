@@ -197,7 +197,7 @@ const ACHIEVEMENTS_LIST = [
   }
 ];
 
-const LEADERBOARD_VERSION = "BETA.13";
+const LEADERBOARD_VERSION = "BETA.14";
 const OLD_SHOPS_KEY = "petes_pretzels_old_shops_v1";
 const LEADERBOARD_MAX_ROWS = 10;
 const LEADERBOARD_PUSH_INTERVAL_MS = 60 * 1000;   // post my score at most once a minute (only if it changed)
@@ -218,17 +218,17 @@ const GLOBE_MAP = [
 ];
 
 let globeSpinOffset = 0;
+// Modes: "pretzels" | "time" | "domination" | "gold"
 let activeLeaderboardMode = "pretzels";
 let liveLeaderboardRows = [];
 let leaderboardFetching = false;
 let leaderboardPushing = false;
 let lastLeaderboardPushAt = 0;
 let lastLeaderboardPushSig = "";
-let lastLeaderboardSyncByMode = { pretzels: 0, time: 0 };
+let lastLeaderboardSyncByMode = { pretzels: 0, time: 0, domination: 0, gold: 0 };
 let cachedAnonLeaderboardClient = null;
 
 function getLeaderboardClient() {
-  // Prefer the shared SDK client (one connection for everything).
   if (typeof CloudSave !== "undefined" && CloudSave.client) return CloudSave.client;
   if (cachedAnonLeaderboardClient) return cachedAnonLeaderboardClient;
   if (typeof SUPABASE_URL !== "undefined" && typeof SUPABASE_ANON_KEY !== "undefined" && window.supabase?.createClient) {
@@ -263,18 +263,25 @@ function getCurrentShopSnapshot() {
     ? Math.floor(GameState.bestRunSeconds)
     : null;
 
+  const lifetimeGold = typeof GameState.getLifetimeGoldenPretzels === "function"
+    ? GameState.getLifetimeGoldenPretzels()
+    : Math.max(0, Math.floor(GameState.goldenPretzels || 0));
+
+  const fastestDomSeconds = (Math.max(GameState.continentIndex || 0, GameState.highestContinentReached || 0) >= 7 && (GameState.fastestDominationSeconds || 0) > 0)
+    ? Math.floor(GameState.fastestDominationSeconds)
+    : null;
+
   return {
     shopKey: slug,
     shopName,
     pretzelsAllRuns,
     completedFullRun: hasCompletedFullRun,
-    bestWinSeconds
+    bestWinSeconds,
+    lifetimeGold,
+    fastestDomSeconds
   };
 }
 
-// Writes the signed-in player's single leaderboard row.
-// Update first, insert only if no row exists (no delete, so the player never
-// vanishes from the board mid-sync).
 async function pushLeaderboardRow(shop) {
   if (typeof CloudSave === "undefined" || !CloudSave.client || !CloudSave.user || !shop) return false;
   const client = CloudSave.client;
@@ -301,14 +308,11 @@ async function pushLeaderboardRow(shop) {
     const { error: insErr } = await client
       .from("shop_leaderboard")
       .insert({ user_id: userId, ...payload });
-    if (insErr && insErr.code !== "23505") throw insErr; // 23505 = row appeared in between, fine
+    if (insErr && insErr.code !== "23505") throw insErr;
   }
   return true;
 }
 
-// force=true: post my score + fetch the board right now.
-// force=false: post my score at most once a minute (only if it changed), and
-// refresh the board every 30s but ONLY while the Trophy Room is open.
 async function syncAndFetchLeaderboard(force = false) {
   if (typeof GameState === "undefined") return;
 
@@ -317,7 +321,7 @@ async function syncAndFetchLeaderboard(force = false) {
   const shop = getCurrentShopSnapshot();
 
   if (signedIn && shop && !leaderboardPushing) {
-    const sig = `${shop.shopName}|${shop.pretzelsAllRuns}|${shop.completedFullRun}|${shop.bestWinSeconds}`;
+    const sig = `${shop.shopName}|${shop.pretzelsAllRuns}|${shop.completedFullRun}|${shop.bestWinSeconds}|${shop.lifetimeGold}|${shop.fastestDomSeconds}`;
     const pushDue = force || (now - lastLeaderboardPushAt >= LEADERBOARD_PUSH_INTERVAL_MS && sig !== lastLeaderboardPushSig);
     if (pushDue) {
       leaderboardPushing = true;
@@ -350,7 +354,7 @@ async function syncAndFetchLeaderboard(force = false) {
         .select("user_id, shop_key, shop_name, pretzels_all_runs, best_win_seconds, completed_full_run")
         .limit(LEADERBOARD_MAX_ROWS);
 
-      if (activeLeaderboardMode === "time") {
+      if (activeLeaderboardMode === "time" || activeLeaderboardMode === "domination") {
         query = query
           .eq("completed_full_run", true)
           .not("best_win_seconds", "is", null)
@@ -373,6 +377,8 @@ async function syncAndFetchLeaderboard(force = false) {
           pretzelsAllRuns: Number(row.pretzels_all_runs) || 0,
           completedFullRun: Boolean(row.completed_full_run),
           bestWinSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
+          lifetimeGold: 0,
+          fastestDomSeconds: (row.completed_full_run && row.best_win_seconds) ? Number(row.best_win_seconds) : null,
           isUser: Boolean(currentUserId && row.user_id === currentUserId)
         }));
       }
@@ -392,7 +398,6 @@ function makeLeaderboardRow(rankText, nameText, statText, isPlayer) {
   const rankEl = document.createElement("strong");
   rankEl.textContent = rankText;
   left.appendChild(rankEl);
-  // textContent only: shop names come from other players, never trust them as HTML.
   left.appendChild(document.createTextNode(` ${nameText}`));
   const right = document.createElement("strong");
   right.textContent = statText;
@@ -408,16 +413,24 @@ function renderLeaderboard() {
   const isSignedIn = typeof CloudSave !== "undefined" && Boolean(CloudSave.user);
   const currentUserId = isSignedIn ? CloudSave.user.id : null;
   const currentShop = getCurrentShopSnapshot();
-  const timeMode = activeLeaderboardMode === "time";
 
-  const statFor = (e) => timeMode
-    ? (e.bestWinSeconds ? fmtSecs(e.bestWinSeconds) : "—")
-    : `${Math.floor(e.pretzelsAllRuns || 0).toLocaleString()} pretzels`;
+  const statFor = (e) => {
+    if (activeLeaderboardMode === "time") {
+      return e.bestWinSeconds ? fmtSecs(e.bestWinSeconds) : "—";
+    }
+    if (activeLeaderboardMode === "domination") {
+      const domSecs = e.fastestDomSeconds || e.bestWinSeconds;
+      return domSecs ? fmtSecs(domSecs) : "—";
+    }
+    if (activeLeaderboardMode === "gold") {
+      return `${Math.floor(e.lifetimeGold || 0).toLocaleString()} [🥨★]`;
+    }
+    return `${Math.floor(e.pretzelsAllRuns || 0).toLocaleString()} pretzels`;
+  };
 
   const byAccount = new Map();
   for (const row of liveLeaderboardRows) {
     if (isSignedIn && currentShop && row.isUser) {
-      // Show my own row live instead of waiting for the next post.
       byAccount.set(currentUserId, {
         ...row,
         shopKey: currentShop.shopKey,
@@ -425,6 +438,8 @@ function renderLeaderboard() {
         pretzelsAllRuns: currentShop.pretzelsAllRuns,
         completedFullRun: currentShop.completedFullRun,
         bestWinSeconds: currentShop.bestWinSeconds,
+        lifetimeGold: currentShop.lifetimeGold,
+        fastestDomSeconds: currentShop.fastestDomSeconds || currentShop.bestWinSeconds,
         isUser: true
       });
     } else {
@@ -433,15 +448,19 @@ function renderLeaderboard() {
     }
   }
 
-  // Signed in but my row isn't in the last fetch yet (just posted)? Rank me locally right away.
   if (isSignedIn && currentShop && currentUserId && !byAccount.has(currentUserId)) {
     byAccount.set(currentUserId, { ...currentShop, userId: currentUserId, isUser: true });
   }
 
   let entries = Array.from(byAccount.values());
-  if (timeMode) {
+  if (activeLeaderboardMode === "time") {
     entries = entries.filter(e => e.completedFullRun && e.bestWinSeconds !== null && e.bestWinSeconds > 0);
     entries.sort((a, b) => a.bestWinSeconds - b.bestWinSeconds);
+  } else if (activeLeaderboardMode === "domination") {
+    entries = entries.filter(e => (e.fastestDomSeconds || e.bestWinSeconds) > 0);
+    entries.sort((a, b) => (a.fastestDomSeconds || a.bestWinSeconds) - (b.fastestDomSeconds || b.bestWinSeconds));
+  } else if (activeLeaderboardMode === "gold") {
+    entries.sort((a, b) => (b.lifetimeGold || 0) - (a.lifetimeGold || 0));
   } else {
     entries.sort((a, b) => b.pretzelsAllRuns - a.pretzelsAllRuns);
   }
@@ -453,7 +472,7 @@ function renderLeaderboard() {
     const emptyRow = document.createElement("div");
     emptyRow.className = "leaderboard-row";
     const msg = document.createElement("span");
-    msg.textContent = timeMode
+    msg.textContent = (activeLeaderboardMode === "time" || activeLeaderboardMode === "domination")
       ? "No full 7-continent run times posted yet."
       : "No scores posted yet.";
     const dash = document.createElement("strong");
@@ -473,7 +492,6 @@ function renderLeaderboard() {
     ));
   });
 
-  // Footer: always show where *you* stand, signed in or not (nobody gets kicked off the board view).
   if (currentShop && !playerShown) {
     if (isSignedIn) {
       frag.appendChild(makeLeaderboardRow("—", `${currentShop.shopName} (Your Shop)`, statFor(currentShop), true));
@@ -673,7 +691,7 @@ const AchievementManager = {
       void toast.offsetWidth;
       toast.classList.add("show");
 
-    if (window.SoundSystem) window.SoundSystem.playSfx("achievement");
+      if (window.SoundSystem) window.SoundSystem.playSfx("achievement");
 
       this.spawnSparks(toast);
 
@@ -737,6 +755,7 @@ const AchievementManager = {
     }
 
     const totalAllContinentsSecs = Math.floor(GameState.totalPlaySecondsAllRuns || 0);
+    const continentSecs = Math.floor(GameState.continentElapsedSeconds || 0);
     const bestEverSecs = GameState.completedFullRun ? Math.floor(GameState.bestRunSeconds || 0) : 0;
     const runPretzels = Math.floor(GameState.pretzels || 0);
     const bestPretzels = Math.max(Math.floor(GameState.bestRunPretzels || 0), runPretzels);
@@ -745,6 +764,7 @@ const AchievementManager = {
       : ((GameState.lifetimePretzelsAllRuns || 0) + runPretzels);
 
     const hubTotalTimeEl = document.getElementById("hub-total-time-all-continents");
+    const hubContinentTimeEl = document.getElementById("hub-continent-time");
     const hubBestTimeEl = document.getElementById("hub-best-time-ever");
     const hubRunPretzEl = document.getElementById("hub-run-pretzels");
     const hubBestPretzEl = document.getElementById("hub-best-pretzels");
@@ -753,6 +773,7 @@ const AchievementManager = {
 
     const fmtSecs = typeof formatDuration === "function" ? formatDuration : (s) => `${s}s`;
     if (hubTotalTimeEl) hubTotalTimeEl.textContent = fmtSecs(totalAllContinentsSecs);
+    if (hubContinentTimeEl) hubContinentTimeEl.textContent = fmtSecs(continentSecs);
     if (hubBestTimeEl) hubBestTimeEl.textContent = bestEverSecs > 0 ? fmtSecs(bestEverSecs) : "—";
     if (hubRunPretzEl) hubRunPretzEl.textContent = runPretzels.toLocaleString();
     if (hubBestPretzEl) hubBestPretzEl.textContent = bestPretzels.toLocaleString();
@@ -775,11 +796,18 @@ const AchievementManager = {
   },
 
   setLeaderboardMode(mode) {
-    activeLeaderboardMode = mode === "time" ? "time" : "pretzels";
-    const pretzelsBtn = document.getElementById("btn-lb-pretzels");
-    const timeBtn = document.getElementById("btn-lb-time");
-    if (pretzelsBtn) pretzelsBtn.classList.toggle("active", activeLeaderboardMode === "pretzels");
-    if (timeBtn) timeBtn.classList.toggle("active", activeLeaderboardMode === "time");
+    const valid = ["pretzels", "time", "domination", "gold"];
+    activeLeaderboardMode = valid.includes(mode) ? mode : "pretzels";
+    const map = {
+      pretzels: "btn-lb-pretzels",
+      time: "btn-lb-time",
+      domination: "btn-lb-domination",
+      gold: "btn-lb-gold"
+    };
+    Object.entries(map).forEach(([k, id]) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.classList.toggle("active", activeLeaderboardMode === k);
+    });
     renderLeaderboard();
     syncAndFetchLeaderboard(false);
   },

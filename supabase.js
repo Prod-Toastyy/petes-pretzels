@@ -4,8 +4,8 @@ const AUTH_STORAGE_KEY = "petes_pretzels_cloud_auth_v1";
 const LEGACY_SESSION_KEY = "petes_pretzels_supabase_session_v1";
 const CLOUD_PUSH_MIN_INTERVAL_MS = 20000;
 
-// BETA.12: the Supabase SDK is now the ONLY thing that owns the login session.
-// (BETA.11 also refreshed the same refresh-token by hand, and the two paths
+// BETA.14: the Supabase SDK is now the ONLY thing that owns the login session.
+// (An earlier version also refreshed the same refresh-token by hand, and the two paths
 // fought each other, which signed people out at random.)
 const CloudSave = {
   client: null,

@@ -10,17 +10,33 @@ const STAR_TWINKLE_MAX_MS = 12000;
 const MAX_CLICK_POPS = 12;
 const STARFIELD_STAR_COUNT = 24;
 
-// BETA.12: build number formatters once (render() used to build ~60 per tick)
 const FMT2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FMT1 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
+// unlock = continent index (0 = NA ... 6 = Antarctica) needed before the track appears in the picker.
+// Bonus tracks (unlock 7) open once you reach Global Franchise.
+// galactic-spacetrip.mp3 removed; painted_sky.mp3 is default.
 const MUSIC_TRACKS = [
-  { file: "binaural-deep-space.mp3", label: "Binaural Deep Space" },
-  { file: "galactic-spacetrip.mp3", label: "Galactic Spacetrip" },
-  { file: "jazzy.mp3", label: "Jazzy" },
-  { file: "vibes.mp3", label: "Vybez" },
-  { file: "chill.mp3", label: "Chill" },
-  { file: "minecraft.mp3", label: "Minecraft" }
+  { file: "painted_sky.mp3", label: "Beneath a Painted Sky", unlock: 0 },
+  { file: "luminous_canopy.mp3", label: "Under the Luminous Canopy", unlock: 1 },
+  { file: "patterns_on_the_pane.mp3", label: "Patterns on the Pane", unlock: 2 },
+  { file: "midnight_pines.mp3", label: "Midnight Under the Pines", unlock: 3 },
+  { file: "the_only_creed.mp3", label: "The Only Creed", unlock: 4 },
+  { file: "jazzy.mp3", label: "Jazzy", unlock: 5 },
+  { file: "minecraft.mp3", label: "Minecraft", unlock: 6 },
+  { file: "binaural-deep-space.mp3", label: "Binaural Deep Space", unlock: 7 },
+  { file: "chill.mp3", label: "Chill", unlock: 7 },
+  { file: "vibes.mp3", label: "Vybez", unlock: 7 }
+];
+
+const CONTINENT_THEME_MAP = [
+  "espresso",       // 0: North America
+  "emerald",        // 1: South America
+  "indigo",         // 2: Europe
+  "sahara",         // 3: Africa
+  "cyber",          // 4: Asia
+  "coral",          // 5: Oceania
+  "glacial"         // 6: Antarctica
 ];
 
 const THEMES_CATALOG = [
@@ -79,7 +95,7 @@ let lastPointerPos = {
 };
 
 function getActiveGameVersion() {
-  return typeof GAME_VERSION !== "undefined" ? GAME_VERSION : "BETA.13";
+  return typeof GAME_VERSION !== "undefined" ? GAME_VERSION : "BETA.14";
 }
 
 function getEl(id) {
@@ -128,24 +144,56 @@ const SoundSystem = {
   bgmEl: null,
   bgmSource: null,
   bgmGain: null,
+  analyser: null,
+  analyserData: null,
   enabledMusic: false,
   musicTrack: MUSIC_TRACKS[0].file,
   musicVol: 0.35,
   sfxVol: 0.65,
+  autoShiftMusic: true,
+  randomizedContinentMap: null,
+
+  getTrackLabel(file) {
+    const found = MUSIC_TRACKS.find(t => t.file === file);
+    return found ? found.label : file;
+  },
+
+  buildRandomizedContinentMap() {
+    // Keep index 0 on painted_sky.mp3 as default; randomize remaining slots across available tracks.
+    const others = MUSIC_TRACKS.filter(t => t.file !== "painted_sky.mp3").map(t => t.file);
+    for (let i = others.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [others[i], others[j]] = [others[j], others[i]];
+    }
+    this.randomizedContinentMap = ["painted_sky.mp3", ...others];
+  },
 
   loadPrefs() {
     try {
       const raw = localStorage.getItem(AUDIO_PREFS_KEY);
-      if (!raw) return;
-      const p = JSON.parse(raw);
-      if (typeof p.enabledMusic === "boolean") this.enabledMusic = p.enabledMusic;
-      if (typeof p.musicTrack === "string" && MUSIC_TRACKS.some(t => t.file === p.musicTrack)) {
-        this.musicTrack = p.musicTrack;
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p.enabledMusic === "boolean") this.enabledMusic = p.enabledMusic;
+        if (typeof p.musicTrack === "string" && MUSIC_TRACKS.some(t => t.file === p.musicTrack)) {
+          this.musicTrack = p.musicTrack;
+        }
+        if (typeof p.autoShiftMusic === "boolean") this.autoShiftMusic = p.autoShiftMusic;
+        if (Number.isFinite(p.musicVol)) this.musicVol = Math.max(0, Math.min(1, p.musicVol));
+        if (Number.isFinite(p.sfxVol)) this.sfxVol = Math.max(0, Math.min(1, p.sfxVol));
+        if (Array.isArray(p.randomizedContinentMap) && p.randomizedContinentMap.length > 0) {
+          const valid = p.randomizedContinentMap.filter(f => MUSIC_TRACKS.some(t => t.file === f));
+          if (valid.length > 0) this.randomizedContinentMap = valid;
+        }
       }
-      if (Number.isFinite(p.musicVol)) this.musicVol = Math.max(0, Math.min(1, p.musicVol));
-      if (Number.isFinite(p.sfxVol)) this.sfxVol = Math.max(0, Math.min(1, p.sfxVol));
     } catch (e) {
       console.error("Audio pref load error:", e);
+    }
+
+    if (typeof GameState !== "undefined" && typeof GameState.musicAutoShiftOnContinent === "boolean") {
+      this.autoShiftMusic = GameState.musicAutoShiftOnContinent;
+    }
+    if (!this.randomizedContinentMap) {
+      this.buildRandomizedContinentMap();
     }
   },
 
@@ -154,11 +202,17 @@ const SoundSystem = {
       localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify({
         enabledMusic: this.enabledMusic,
         musicTrack: this.musicTrack,
+        autoShiftMusic: this.autoShiftMusic,
         musicVol: this.musicVol,
-        sfxVol: this.sfxVol
+        sfxVol: this.sfxVol,
+        randomizedContinentMap: this.randomizedContinentMap
       }));
     } catch (e) {
       console.error("Audio pref save error:", e);
+    }
+    if (typeof GameState !== "undefined") {
+      GameState.musicAutoShiftOnContinent = this.autoShiftMusic;
+      GameState.musicTrack = this.musicTrack;
     }
   },
 
@@ -173,8 +227,6 @@ const SoundSystem = {
     return this.ctx;
   },
 
-  // Desktop browsers honor HTMLMediaElement.volume; iOS/iPadOS Safari ignores it (always reads 1).
-  // Probe once so we only use the Web Audio gain route where we truly need it.
   elementVolumeWorks() {
     if (this._elVolOk !== undefined) return this._elVolOk;
     try {
@@ -201,31 +253,54 @@ const SoundSystem = {
     return this.bgmEl;
   },
 
-  // BETA.13: route bgm through a GainNode. iOS Safari ignores HTMLMediaElement.volume.
-  // Created lazily from a user gesture; falls back to element volume if Web Audio is unavailable.
   routeBgmThroughGain() {
     if (this.bgmGain) return true;
-    if (this.elementVolumeWorks()) return false; // desktop: plain element.volume, no Web Audio graph to go silent
+    if (this.elementVolumeWorks()) return false;
     const ctx = this.ensureContext();
     if (!ctx || !this.bgmEl || typeof ctx.createMediaElementSource !== "function") return false;
     try {
       this.bgmSource = ctx.createMediaElementSource(this.bgmEl);
       this.bgmGain = ctx.createGain();
-      this.bgmSource.connect(this.bgmGain);
+      this.analyser = typeof ctx.createAnalyser === "function" ? ctx.createAnalyser() : null;
+      if (this.analyser) {
+        this.analyser.fftSize = 256;
+        this.analyserData = new Uint8Array(this.analyser.frequencyBinCount);
+        this.bgmSource.connect(this.analyser);
+        this.analyser.connect(this.bgmGain);
+      } else {
+        this.bgmSource.connect(this.bgmGain);
+      }
       this.bgmGain.connect(ctx.destination);
       return true;
     } catch (e) {
       console.error("BGM gain routing failed:", e);
       this.bgmSource = null;
       this.bgmGain = null;
+      this.analyser = null;
+      this.analyserData = null;
       return false;
+    }
+  },
+
+  getBassLevel() {
+    if (!this.analyser || !this.analyserData || !this.enabledMusic || !this.bgmEl || this.bgmEl.paused) {
+      return 0;
+    }
+    try {
+      this.analyser.getByteFrequencyData(this.analyserData);
+      let sum = 0;
+      const bins = Math.min(12, this.analyserData.length);
+      for (let i = 0; i < bins; i++) sum += this.analyserData[i];
+      return Math.min(1, sum / (bins * 255));
+    } catch (e) {
+      return 0;
     }
   },
 
   applyMusicVolume() {
     if (this.bgmGain) {
       this.bgmGain.gain.value = this.musicVol;
-      if (this.bgmEl) this.bgmEl.volume = 1; // gain node owns the level once routed (avoids vol squared)
+      if (this.bgmEl) this.bgmEl.volume = 1;
     } else if (this.bgmEl) {
       this.bgmEl.volume = this.musicVol;
     }
@@ -238,7 +313,6 @@ const SoundSystem = {
       const p = bgm.play();
       if (p && p.catch) p.catch(e => console.warn("Music play blocked/failed:", e && e.name, e && e.message));
     };
-    // When routed through Web Audio, the context must be running or the output is silent.
     const ctx = this.bgmGain ? this.ensureContext() : null;
     if (ctx && ctx.state !== "running") {
       ctx.resume().then(start, start);
@@ -247,8 +321,6 @@ const SoundSystem = {
     }
   },
 
-  // Browsers block audio until a user gesture. If music was saved as ON, start it on the
-  // first click/tap/key anywhere (e.g. the intro "start" button) instead of waiting for a toggle.
   armMusicAutostart() {
     if (!this.enabledMusic || this._autostartArmed) return;
     this._autostartArmed = true;
@@ -260,9 +332,9 @@ const SoundSystem = {
     const onGesture = (e) => {
       if (!this.enabledMusic) { disarm(); return; }
       const t = e.target;
-      if (t && t.closest && t.closest("#btn-toggle-music")) return; // toggle handler deals with it
+      if (t && t.closest && t.closest("#btn-toggle-music")) return;
       disarm();
-      if (this.bgmEl && !this.bgmEl.paused) return; // already playing
+      if (this.bgmEl && !this.bgmEl.paused) return;
       this.syncMusicPlayback();
     };
     events.forEach(ev => document.addEventListener(ev, onGesture, true));
@@ -327,11 +399,74 @@ const SoundSystem = {
     }
   },
 
+  musicUnlockLevel() {
+    if (typeof GameState === "undefined") return 0;
+    return Math.max(GameState.continentIndex || 0, GameState.highestContinentReached || 0);
+  },
+
+  isTrackUnlocked(t) {
+    return (t.unlock || 0) <= this.musicUnlockLevel();
+  },
+
+  getUnlockedTracks() {
+    return MUSIC_TRACKS.filter(t => this.isTrackUnlocked(t));
+  },
+
+  trackForContinent(idx) {
+    const cIdx = Math.max(0, idx | 0);
+    if (cIdx === 0) return MUSIC_TRACKS[0];
+    const pool = this.randomizedContinentMap && this.randomizedContinentMap.length > 0
+      ? this.randomizedContinentMap
+      : MUSIC_TRACKS.map(t => t.file);
+    const chosenFile = pool[cIdx % pool.length] || "painted_sky.mp3";
+    return MUSIC_TRACKS.find(t => t.file === chosenFile) || MUSIC_TRACKS[0];
+  },
+
+  cycleNextUnlockedTrack() {
+    const unlocked = this.getUnlockedTracks();
+    if (unlocked.length <= 1) return;
+    const curIdx = unlocked.findIndex(t => t.file === this.musicTrack);
+    const nextTrack = unlocked[(curIdx + 1) % unlocked.length] || unlocked[0];
+    this.ensureContext();
+    this.musicTrack = nextTrack.file;
+    this.syncMusicPlayback();
+    if (typeof GameState !== "undefined" && GameState.started) {
+      logMessage(`Jukebox switched to: ${nextTrack.label}`);
+    }
+  },
+
+  syncAfterLoad() {
+    if (typeof GameState !== "undefined" && typeof GameState.musicAutoShiftOnContinent === "boolean") {
+      this.autoShiftMusic = GameState.musicAutoShiftOnContinent;
+    }
+    const cur = MUSIC_TRACKS.find(t => t.file === this.musicTrack);
+    if (this.autoShiftMusic) {
+      this.musicTrack = this.trackForContinent(GameState.continentIndex || 0).file;
+    } else if (!cur || !this.isTrackUnlocked(cur)) {
+      this.musicTrack = MUSIC_TRACKS[0].file;
+    }
+    this.populateTrackSelect();
+    this.refreshControlsUI();
+    if (this.bgmEl) this.ensureBgm();
+    this.savePrefs();
+  },
+
+  onContinentChanged() {
+    this.buildRandomizedContinentMap();
+    if (this.autoShiftMusic && typeof GameState !== "undefined") {
+      this.musicTrack = this.trackForContinent(GameState.continentIndex || 0).file;
+      if (this.bgmEl || this.enabledMusic) this.syncMusicPlayback();
+      else this.savePrefs();
+    }
+    this.populateTrackSelect();
+    this.refreshControlsUI();
+  },
+
   populateTrackSelect() {
     const trackSel = getEl("select-music-track");
     if (!trackSel) return;
     trackSel.innerHTML = "";
-    MUSIC_TRACKS.forEach(t => {
+    MUSIC_TRACKS.filter(t => this.isTrackUnlocked(t) || t.file === this.musicTrack).forEach(t => {
       const opt = document.createElement("option");
       opt.value = t.file;
       opt.textContent = t.label;
@@ -347,9 +482,18 @@ const SoundSystem = {
     const sfxSlider = getEl("slider-sfx-vol");
     const musicLabel = getEl("music-vol-label");
     const sfxLabel = getEl("sfx-vol-label");
+    const autoShiftChk = getEl("chk-music-autoshift");
+    const nextPillBtn = getEl("btn-next-track-pill");
+
+    const trackLabel = this.getTrackLabel(this.musicTrack);
+    setText("now-playing-ticker", `${this.enabledMusic ? "♪" : "⏸"} ${trackLabel}`);
+    if (nextPillBtn) {
+      nextPillBtn.disabled = this.getUnlockedTracks().length <= 1;
+    }
 
     if (toggleBtn) toggleBtn.textContent = `Music: ${this.enabledMusic ? "ON" : "OFF"}`;
     if (trackSel && trackSel.value !== this.musicTrack) trackSel.value = this.musicTrack;
+    if (autoShiftChk) autoShiftChk.checked = Boolean(this.autoShiftMusic);
     if (musicSlider) musicSlider.value = String(Math.round(this.musicVol * 100));
     if (sfxSlider) sfxSlider.value = String(Math.round(this.sfxVol * 100));
     if (musicLabel) musicLabel.textContent = `${Math.round(this.musicVol * 100)}%`;
@@ -364,7 +508,6 @@ const SoundSystem = {
 
     onClick("btn-toggle-music", () => {
       this.ensureContext();
-      // Label says ON but autoplay was blocked: this click should start the music, not turn it off.
       if (this.enabledMusic && this.bgmEl && this.bgmEl.paused) {
         this.syncMusicPlayback();
         return;
@@ -373,7 +516,20 @@ const SoundSystem = {
       this.syncMusicPlayback();
     });
 
+    onClick("btn-next-track-pill", () => {
+      this.cycleNextUnlockedTrack();
+    });
+
     this.armMusicAutostart();
+
+    const autoShiftChk = getEl("chk-music-autoshift");
+    if (autoShiftChk) {
+      autoShiftChk.checked = this.autoShiftMusic;
+      autoShiftChk.addEventListener("change", (e) => {
+        this.autoShiftMusic = Boolean(e.target.checked);
+        this.savePrefs();
+      });
+    }
 
     const trackSel = getEl("select-music-track");
     if (trackSel) {
@@ -414,8 +570,6 @@ let tabIconApplied = false;
 let lastTitleAt = 0;
 
 function applyTabPretzelIconAndTitle(pretzelCount = 0) {
-  // BETA.12: the icon is already in index.html. Re-assigning href 5x/sec made
-  // the browser re-decode the image over and over (big Firefox hit).
   if (!tabIconApplied) {
     tabIconApplied = true;
     if (!document.querySelector("link[rel~='icon']")) {
@@ -702,17 +856,6 @@ function triggerConfettiStarBurst(centerX = window.innerWidth * 0.5, centerY = w
   }
 }
 
-function triggerLevel25Juice(elementId) {
-  triggerScreenShake();
-  const target = getEl(elementId);
-  if (target) {
-    const rect = target.getBoundingClientRect();
-    triggerConfettiStarBurst(rect.left + rect.width * 0.5, rect.top + rect.height * 0.4, 14);
-  } else {
-    triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.45, 14);
-  }
-}
-
 function triggerModuleTierGlow(boxId) {
   const box = getEl(boxId);
   if (!box) return;
@@ -729,6 +872,15 @@ function getUnlockedThemeTier() {
   const currentIdx = typeof GameState !== "undefined" ? (GameState.continentIndex || 0) : 0;
   const highestIdx = typeof GameState !== "undefined" ? (GameState.highestContinentReached || 0) : 0;
   return Math.max(currentIdx, highestIdx);
+}
+
+function getThemeIdForContinent(contIdx) {
+  const idx = Math.max(0, contIdx | 0);
+  if (idx < CONTINENT_THEME_MAP.length) {
+    return CONTINENT_THEME_MAP[idx];
+  }
+  const extraLoops = idx - CONTINENT_THEME_MAP.length + 1;
+  return extraLoops % 2 === 1 ? "gold-solid" : "cyber";
 }
 
 function isThemeUnlocked(themeObj) {
@@ -814,6 +966,27 @@ function applyTheme(themeId, persist = true) {
     }
   }
   refreshThemeDropdown(true, safeTheme.id);
+}
+
+function updateAudioReactiveStage() {
+  const stageEl = getEl("ascii-stage");
+  if (!stageEl) return;
+  const isReactiveTheme = document.body.classList.contains("theme-cyber") || document.body.classList.contains("theme-gold-solid");
+  if (!isReactiveTheme) {
+    stageEl.style.boxShadow = "";
+    return;
+  }
+  const bass = SoundSystem.getBassLevel();
+  if (bass > 0.05) {
+    const glowPx = Math.round(8 + bass * 22);
+    const alpha = (0.25 + bass * 0.55).toFixed(2);
+    const color = document.body.classList.contains("theme-cyber")
+      ? `rgba(255, 94, 196, ${alpha})`
+      : `rgba(255, 210, 63, ${alpha})`;
+    stageEl.style.boxShadow = `0 0 ${glowPx}px ${color}, inset 0 0 ${Math.round(bass * 10)}px ${color}`;
+  } else {
+    stageEl.style.boxShadow = "";
+  }
 }
 
 function refreshCloudMenuUI() {
@@ -918,7 +1091,9 @@ async function clearCloudLeaderboardScoreOnWipe() {
       shopName,
       pretzelsAllRuns: 0,
       completedFullRun: false,
-      bestWinSeconds: null
+      bestWinSeconds: null,
+      lifetimeGold: 0,
+      fastestDomSeconds: null
     });
   } catch (e) {
     console.warn("Leaderboard wipe sync warning:", e);
@@ -933,8 +1108,10 @@ async function executeFullWipe() {
       GameState.writeHighScores({
         totalPlaySecondsAllRuns: 0,
         bestRunSeconds: 0,
+        fastestDominationSeconds: 0,
         bestRunPretzels: 0,
         lifetimePretzelsBanked: 0,
+        lifetimeGoldenPretzels: 0,
         completedFullRun: false
       });
     }
@@ -942,8 +1119,10 @@ async function executeFullWipe() {
       GameState.reset(true);
     }
     GameState.lifetimePretzelsAllRuns = 0;
+    GameState.lifetimeGoldenPretzels = 0;
     GameState.bestRunPretzels = 0;
     GameState.bestRunSeconds = 0;
+    GameState.fastestDominationSeconds = 0;
     GameState.totalPlaySecondsAllRuns = 0;
     GameState.completedFullRun = false;
     GameState.pretzels = 0;
@@ -954,8 +1133,10 @@ async function executeFullWipe() {
       GameState.writeHighScores({
         totalPlaySecondsAllRuns: 0,
         bestRunSeconds: 0,
+        fastestDominationSeconds: 0,
         bestRunPretzels: 0,
         lifetimePretzelsBanked: 0,
+        lifetimeGoldenPretzels: 0,
         completedFullRun: false
       });
     }
@@ -969,7 +1150,7 @@ async function executeFullWipe() {
     liveLeaderboardRows = [];
   }
   if (typeof lastLeaderboardSyncByMode !== "undefined") {
-    lastLeaderboardSyncByMode = { pretzels: 0, time: 0 };
+    lastLeaderboardSyncByMode = { pretzels: 0, time: 0, domination: 0, gold: 0 };
   }
   if (typeof lastLeaderboardPushSig !== "undefined") {
     lastLeaderboardPushSig = "";
@@ -2145,7 +2326,6 @@ function logMessage(msg) {
   updateConsoleMarquee();
 }
 
-// If the top console line is wider than its box, slowly scroll it across (and back); otherwise leave it static.
 function updateConsoleMarquee() {
   const box = getEl("console-box");
   const log = getEl("console-log");
@@ -2155,10 +2335,10 @@ function updateConsoleMarquee() {
   log.style.removeProperty("--marquee-time");
   const overflow = log.scrollWidth - box.clientWidth;
   if (overflow > 2) {
-    const secs = Math.max(6, overflow / 25 + 3); // ~25px/s plus pauses at each end
+    const secs = Math.max(6, overflow / 25 + 3);
     log.style.setProperty("--marquee-dist", `-${Math.ceil(overflow + 4)}px`);
     log.style.setProperty("--marquee-time", `${secs.toFixed(1)}s`);
-    void log.offsetWidth; // restart animation
+    void log.offsetWidth;
     log.classList.add("marquee");
   }
 }
@@ -2181,11 +2361,14 @@ function sanitizeNumbers() {
   if (!Number.isFinite(GameState.highestContinentReached)) GameState.highestContinentReached = 0;
   GameState.highestContinentReached = Math.max(GameState.continentIndex, GameState.highestContinentReached);
   if (!Number.isFinite(GameState.goldenPretzels)) GameState.goldenPretzels = 0;
+  if (!Number.isFinite(GameState.lifetimeGoldenPretzels)) GameState.lifetimeGoldenPretzels = GameState.goldenPretzels;
   if (!Number.isFinite(GameState.lifetimePretzelsAllRuns)) GameState.lifetimePretzelsAllRuns = 0;
   if (!Number.isFinite(GameState.totalPlaySecondsAllRuns)) GameState.totalPlaySecondsAllRuns = 0;
   if (!Number.isFinite(GameState.runStartTime)) GameState.runStartTime = Date.now();
   if (!Number.isFinite(GameState.elapsedRunSeconds)) GameState.elapsedRunSeconds = 0;
+  if (!Number.isFinite(GameState.continentElapsedSeconds)) GameState.continentElapsedSeconds = 0;
   if (!Number.isFinite(GameState.bestRunSeconds)) GameState.bestRunSeconds = 0;
+  if (!Number.isFinite(GameState.fastestDominationSeconds)) GameState.fastestDominationSeconds = 0;
   if (!Number.isFinite(GameState.bestRunPretzels)) GameState.bestRunPretzels = 0;
   if (typeof GameState.goldUiUnlocked !== "boolean") GameState.goldUiUnlocked = false;
   if (typeof GameState.endingSeenForRun !== "boolean") GameState.endingSeenForRun = false;
@@ -2269,8 +2452,6 @@ function getRangeShooterIntervalSec() {
   return Math.max(0.35, 1.60 / (1 + ((count - 1) * 0.22)));
 }
 
-// BETA.13: after 25 owned, cost growth drops to 25% of its normal excess
-// (1.42 -> ~1.105) so Tier IV (100 units) is reachable. ownedAfterBuy = count AFTER the purchase.
 function getCostGrowth(baseRate, ownedAfterBuy) {
   return ownedAfterBuy > 25 ? 1 + (baseRate - 1) * 0.25 : baseRate;
 }
@@ -2311,7 +2492,7 @@ function triggerAutoShooterShot() {
 
 function isSupplyChainActivelyRunning() {
   if (!GameState.unlockedSupplyChain || !GameState.supplyChainEnabled) return false;
-  return getSupplyPayrollPerSec() <= 0 || GameState.funds >= getSupplyPayrollPerSec() * 0.2; // matches tick: funds >= payroll * dt (dt = 0.2s)
+  return getSupplyPayrollPerSec() <= 0 || GameState.funds >= getSupplyPayrollPerSec() * 0.2;
 }
 
 function getActiveSupplyRates() {
@@ -2613,16 +2794,13 @@ function updateDemand() {
   GameState.demand = getDemandAtPrice(GameState.price);
 }
 
-// BETA.13 Auto-Pricer: highest base price at which sales/sec still >= production/sec.
-// Above it inventory piles up; below it you give away margin (demand elasticity is 1.18 > 1,
-// so revenue falls as price rises on the demand-limited side).
 function getAutoPriceTarget() {
   const supply = GameState.extruders * GameState.extruderSpeed * getModuleTierInfo(GameState.extruders).mult;
   if (!(supply > 0)) return GameState.price;
   const maxDelivery = getEffectiveMaxDelivery();
   const salesAt = (cents) => maxDelivery * getDemandAtPrice(cents / 100) / 100;
-  let lo = 5;      // $0.05 (game minimum)
-  let hi = 10000;  // $100.00 cap
+  let lo = 5;
+  let hi = 10000;
   if (salesAt(hi) >= supply) return hi / 100;
   if (salesAt(lo) < supply) return lo / 100;
   while (hi - lo > 1) {
@@ -2673,402 +2851,677 @@ function updateRangeTargetsUI() {
     }
   }
 }
+function getBuffMult(kind) {
+  if (typeof GameState === "undefined" || GameState._simulatingOffline) return 1;
+  const buffs = Array.isArray(GameState.activeBuffs) ? GameState.activeBuffs : [];
+  let mult = 1;
+  for (const b of buffs) {
+    if (!b || b.remaining <= 0) continue;
+    if (b.kind === kind && Number.isFinite(b.mult)) mult *= b.mult;
+  }
+  return mult;
+}
 
-function buildPlinkoBucketRow() {
-  const slots = Array(PLINKO_INNER_COLS).fill(" ");
-  const putToken = (startIdx, token) => {
-    for (let i = 0; i < token.length; i++) {
-      const idx = startIdx + i;
-      if (idx >= 0 && idx < PLINKO_INNER_COLS) {
-        slots[idx] = token[i];
-      }
-    }
-  };
+function addBuff(id, label, kind, mult, durationSec) {
+  if (!Array.isArray(GameState.activeBuffs)) GameState.activeBuffs = [];
+  const existing = GameState.activeBuffs.find(b => b.id === id);
+  if (existing) {
+    existing.remaining = Math.max(existing.remaining, durationSec);
+    existing.mult = mult;
+    existing.label = label;
+  } else {
+    GameState.activeBuffs.push({ id, label, kind, mult, remaining: durationSec });
+  }
+}
 
-  putToken(1, "[X]");
-  putToken(4, "[🌾]");
-  putToken(7, "[★]");
-  putToken(10, "[🌾]");
-  putToken(13, "[X]");
+function tickBuffs(dt) {
+  if (!Array.isArray(GameState.activeBuffs) || GameState.activeBuffs.length === 0) return;
+  const next = [];
+  for (const b of GameState.activeBuffs) {
+    if (!b || b.remaining <= 0) continue;
+    b.remaining = Math.max(0, b.remaining - dt);
+    if (b.remaining > 0) next.push(b);
+  }
+  GameState.activeBuffs = next;
+}
 
-  return `|${slots.join("")}|`;
+function renderBuffBar() {
+  const bar = getEl("buff-bar");
+  if (!bar) return;
+  const buffs = Array.isArray(GameState.activeBuffs) ? GameState.activeBuffs.filter(b => b && b.remaining > 0) : [];
+  if (buffs.length === 0) {
+    bar.classList.add("hidden");
+    bar.replaceChildren();
+    return;
+  }
+  bar.classList.remove("hidden");
+  const frag = document.createDocumentFragment();
+  for (const b of buffs) {
+    const pill = document.createElement("span");
+    pill.className = "buff-pill";
+    pill.textContent = `${b.label} (${Math.ceil(b.remaining)}s)`;
+    frag.appendChild(pill);
+  }
+  bar.replaceChildren(frag);
 }
 
 function renderPlinkoBoard(force = false) {
   const boardEl = getEl("plinko-board");
-  if (!boardEl) return;
-
-  const dropCol = Math.max(1, Math.min(PLINKO_COLS - 2, Math.round(plinkoDropperPos)));
-  const ballRow = plinkoBall ? plinkoBall.row : -1;
-  const ballCol = plinkoBall ? plinkoBall.col : -1;
-  const signature = `${dropCol}:${ballRow}:${ballCol}`;
-
-  if (!force && lastPlinkoSignature.value === signature) return;
-  lastPlinkoSignature.value = signature;
+  if (!boardEl || !GameState.unlockedPlinko) return;
 
   const lines = [];
-  const topRow = Array(PLINKO_INNER_COLS).fill(" ");
-  if (!plinkoBall) {
-    topRow[dropCol - 1] = "▼";
-  } else if (plinkoBall.row === 0) {
-    topRow[plinkoBall.col - 1] = "@";
-  }
-  lines.push(` ${topRow.join("")} `);
-
-  for (let r = 1; r < PLINKO_ROWS; r++) {
-    const rowChars = Array(PLINKO_INNER_COLS).fill(" ");
-    for (let c = 1; c < PLINKO_INNER_COLS - 1; c++) {
-      if ((r + c) % 2 === 1) {
-        rowChars[c] = "·";
-      }
-    }
+  lines.push(`DROPPER: ${" ".repeat(plinkoDropperPos)}[▼]${" ".repeat(Math.max(0, PLINKO_INNER_COLS - 1 - plinkoDropperPos))}`);
+  for (let r = 0; r < PLINKO_ROWS; r++) {
+    const rowChars = Array.from({ length: PLINKO_INNER_COLS }, (_, c) => ((r + c) % 2 === 0 ? "." : " "));
     if (plinkoBall && plinkoBall.row === r) {
-      rowChars[plinkoBall.col - 1] = "@";
+      const bCol = Math.max(0, Math.min(PLINKO_INNER_COLS - 1, plinkoBall.col));
+      rowChars[bCol] = "@";
     }
     lines.push(`|${rowChars.join("")}|`);
   }
+  lines.push("|[X][🌾][🌾][★][🌾][🌾][X]|");
 
-  lines.push(buildPlinkoBucketRow());
-  boardEl.textContent = lines.join("\n");
+  const sig = lines.join("\n");
+  if (!force && sig === lastPlinkoSignature.value) return;
+  lastPlinkoSignature.value = sig;
+  boardEl.textContent = sig;
 }
 
 function dropPlinkoPretzel() {
-  if (!GameState.started || !GameState.unlockedPlinko) return;
-  if (plinkoBall) return;
+  if (!GameState.unlockedPlinko || plinkoBall) return;
   if (GameState.inventory < PLINKO_COST) {
-    setText("plinko-feedback", `Need ${PLINKO_COST} unsold pretzels to drop!`);
+    setText("plinko-feedback", `Need ${PLINKO_COST} unsold inventory to drop.`);
     return;
   }
-
   GameState.inventory -= PLINKO_COST;
   plinkoBall = {
     row: 0,
-    col: Math.max(1, Math.min(PLINKO_COLS - 2, Math.round(plinkoDropperPos)))
+    col: Math.max(0, Math.min(PLINKO_INNER_COLS - 1, plinkoDropperPos))
   };
   plinkoStepTimer = 0;
-  SoundSystem.playSfx("bake");
-  spawnSubtleClickPop(getEl("btn-drop-plinko"), "🥨 ▼");
-  setText("plinko-feedback", "Dropping pretzel...");
+  setText("plinko-feedback", "Pretzel dropped...");
   renderPlinkoBoard(true);
   requestRender();
 }
 
-function resolvePlinkoBucket(finalCol) {
-  if (finalCol >= 8 && finalCol <= 10) {
+function resolvePlinkoLanding(col) {
+  const ratio = col / Math.max(1, PLINKO_INNER_COLS - 1);
+  if (ratio < 0.16 || ratio > 0.84) {
+    setText("plinko-feedback", "[X] Burnt in the chute! (0 reward)");
+    logMessage("Plinko: Pretzel burnt up in the side chute.");
+  } else if (ratio >= 0.42 && ratio <= 0.58) {
     GameState.goldenRushEndTime = Date.now() + 30000;
-    SoundSystem.playSfx("achievement");
-    setText("plinko-feedback", "RARE JACKPOT [★]! 30s GOLDEN RUSH!");
-    logMessage("GOLDEN RUSH! 2x Cash & rare Golden Pretzels for 30s!");
-    spawnFallingGoldenPretzel();
-  } else if ((finalCol >= 4 && finalCol <= 7) || (finalCol >= 11 && finalCol <= 14)) {
-    const freeDough = Math.max(250, Math.round((GameState.doughBatchSize || 500) * 0.5));
-    GameState.dough += freeDough;
-    SoundSystem.playSfx("buy");
-    setText("plinko-feedback", `LANDED IN [🌾]: Won +${freeDough.toLocaleString()} lbs Dough!`);
-    logMessage(`Plinko Winner! Won +${freeDough.toLocaleString()} lbs of fresh dough.`);
+    addBuff("golden_rush", "★ GOLDEN RUSH (2x Cash)", "sales", 2.0, 30);
+    const bonusDough = Math.max(250, GameState.doughBatchSize || 500);
+    GameState.dough += bonusDough;
+    setText("plinko-feedback", `[★] JACKPOT! 30s Golden Rush + ${bonusDough.toLocaleString()} lbs dough!`);
+    logMessage("PLINKO JACKPOT! 30s Golden Rush active + bonus dough!");
+    triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.5, 14);
   } else {
-    setText("plinko-feedback", "LANDED IN [X]: Burnt pretzel! Nothing won.");
-    logMessage("Plinko: Pretzel landed in the burnt [X] slot.");
+    const rewardDough = Math.max(150, Math.round((GameState.doughBatchSize || 500) * 0.6));
+    GameState.dough += rewardDough;
+    setText("plinko-feedback", `[🌾] Caught +${rewardDough.toLocaleString()} lbs dough!`);
+    logMessage(`Plinko: Won +${rewardDough.toLocaleString()} lbs dough.`);
   }
-  requestRender();
 }
 
-function spawnFallingGoldenPretzel() {
-  if (document.hidden) return;
-  const sky = getEl("golden-sky-layer");
-  if (!sky || !GameState.isGoldenRushActive()) return;
-  if (sky.childElementCount >= MAX_FALLING_PRETZELS) return;
+function tickPlinko(dt) {
+  if (!GameState.unlockedPlinko) return;
+  plinkoStepTimer += dt;
+  const stepInterval = plinkoBall ? 0.12 : 0.16;
+  if (plinkoStepTimer < stepInterval) return;
+  plinkoStepTimer = 0;
 
-  const el = document.createElement("button");
-  el.type = "button";
-  el.className = "falling-gold-pretzel";
-  el.textContent = "🥨";
-  el.title = "Click for Golden Pretzel Bonus!";
-
-  const leftPct = 10 + Math.random() * 80;
-  el.style.left = `${leftPct}%`;
-  sky.appendChild(el);
-
-  let collected = false;
-  el.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (collected) return;
-    collected = true;
-
-    const bakeRate = getEffectiveBakeRate();
-    const reward = Math.max(
-      25,
-      Math.round(bakeRate * 15),
-      Math.round(GameState.pretzels * 0.12)
-    );
-
-    GameState.pretzels += reward;
-    GameState.inventory += reward;
-    SoundSystem.playSfx("buy");
-    logMessage(`CAUGHT GOLDEN PRETZEL! +${reward.toLocaleString()} pretzels added!`);
-    el.remove();
-    requestRender();
-  });
-
-  setTimeout(() => {
-    if (el.parentNode) el.remove();
-  }, 4600);
-}
-
-function shootTarget() {
-  if (!GameState.started || !GameState.unlockedMinigame) return;
-
-  const now = Date.now();
-  if (now - lastShotTime < 140) return;
-  lastShotTime = now;
-
-  const trackEl = getEl("range-track");
-  const targets = getActiveRangeTargets();
-  let bestReward = 0;
-
-  targets.forEach(targetPos => {
-    const dist = Math.abs(crosshairPos - targetPos);
-    if (dist <= 5.5) {
-      bestReward = Math.max(bestReward, 3);
-    } else if (dist <= 12) {
-      bestReward = Math.max(bestReward, 1);
+  if (!plinkoBall) {
+    plinkoDropperPos += plinkoDropperDir;
+    if (plinkoDropperPos >= PLINKO_INNER_COLS - 1) {
+      plinkoDropperPos = PLINKO_INNER_COLS - 1;
+      plinkoDropperDir = -1;
+    } else if (plinkoDropperPos <= 0) {
+      plinkoDropperPos = 0;
+      plinkoDropperDir = 1;
     }
-  });
-
-  if (trackEl) {
-    trackEl.classList.remove("flash-hit", "flash-miss");
-    void trackEl.offsetWidth;
+    renderPlinkoBoard(false);
+    return;
   }
 
-  if (bestReward >= 3) {
-    GameState.researchPoints += 3;
-    SoundSystem.playSfx("buy");
-    setText("range-feedback", `BULLSEYE! +3 RP (${targets.length} targets active)`);
-    if (trackEl) trackEl.classList.add("flash-hit");
-  } else if (bestReward >= 1) {
-    GameState.researchPoints += 1;
-    SoundSystem.playSfx("bake");
-    setText("range-feedback", `Nice graze! +1 RP (${targets.length} targets active)`);
-    if (trackEl) trackEl.classList.add("flash-hit");
-  } else {
-    setText("range-feedback", "Missed! Keep firing.");
-    if (trackEl) trackEl.classList.add("flash-miss");
-  }
+  plinkoBall.row += 1;
+  const drift = Math.floor(Math.random() * 3) - 1;
+  plinkoBall.col = Math.max(0, Math.min(PLINKO_INNER_COLS - 1, plinkoBall.col + drift));
 
-  requestRender();
+  if (plinkoBall.row >= PLINKO_ROWS) {
+    const landedCol = plinkoBall.col;
+    plinkoBall = null;
+    resolvePlinkoLanding(landedCol);
+    renderPlinkoBoard(true);
+    return;
+  }
+  renderPlinkoBoard(true);
 }
 
-function initSetupPicker() {
-  const grid = getEl("ascii-picker-grid");
-  const gallery = getGallery();
-  if (!grid) return;
+function simulateEconomyStep(dt) {
+  if (!GameState.started) return;
 
-  if (typeof GameState !== "undefined" && (!Number.isInteger(GameState.selectedAsciiIndex) || GameState.selectedAsciiIndex < 0 || GameState.selectedAsciiIndex >= gallery.length)) {
-    GameState.selectedAsciiIndex = 0;
+  const payrollPerSec = getSupplyPayrollPerSec();
+  if (payrollPerSec > 0 && GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
+    const payrollDue = payrollPerSec * dt;
+    if (GameState.funds >= payrollDue) {
+      GameState.funds -= payrollDue;
+    } else {
+      GameState.supplyChainEnabled = false;
+      logMessage("Supply Chain paused: Insufficient funds to cover worker payroll.");
+    }
   }
-  const activeIdx = typeof GameState !== "undefined" ? GameState.selectedAsciiIndex : 0;
 
-  grid.innerHTML = "";
-  gallery.forEach((art, index) => {
-    const card = document.createElement("div");
-    card.className = "ascii-option" + (index === activeIdx ? " selected" : "");
-    card.setAttribute("role", "button");
-    card.setAttribute("tabindex", "0");
-    card.setAttribute("aria-label", `Bakery Icon ${index + 1}`);
+  if (isSupplyChainActivelyRunning()) {
+    const saltMult = getModuleTierInfo(GameState.saltMines).mult * (GameState.saltRateMult || 1);
+    const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
+    const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
 
-    const pre = document.createElement("pre");
-    pre.textContent = art;
-    card.appendChild(pre);
+    const minedSalt = GameState.saltMines * SALT_BASE_RATE * saltMult * dt;
+    const harvestedWheat = GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult * dt;
+    GameState.salt = (GameState.salt || 0) + minedSalt;
+    GameState.wheat = (GameState.wheat || 0) + harvestedWheat;
 
-    const selectCard = () => {
-      grid.querySelectorAll(".ascii-option").forEach(el => el.classList.remove("selected"));
-      card.classList.add("selected");
-      if (typeof GameState !== "undefined") {
-        GameState.selectedAsciiIndex = index;
+    if (GameState.refineries > 0) {
+      const maxRefine = GameState.refineries * REFINERY_BASE_RATE * refineryMult * dt;
+      const actualRefine = Math.min(maxRefine, GameState.salt, GameState.wheat);
+      if (actualRefine > 0) {
+        GameState.salt -= actualRefine;
+        GameState.wheat -= actualRefine;
+        GameState.dough += actualRefine;
       }
-      lastTextCache.delete("txt:ascii-stage");
-      setText("ascii-stage", getEvolvedAscii());
-    };
+    }
+  }
 
-    card.addEventListener("click", selectCard);
-    card.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        selectCard();
+  const extruderMult = getModuleTierInfo(GameState.extruders).mult;
+  const prodMult = getBuffMult("production");
+  const autoBakeAmount = GameState.extruders * GameState.extruderSpeed * extruderMult * prodMult * dt;
+  if (autoBakeAmount > 0) {
+    bakePretzels(autoBakeAmount);
+  }
+
+  if (GameState.unlockedAutoDough && GameState.autoDoughEnabled) {
+    const batchSize = GameState.doughBatchSize || 500;
+    if (GameState.dough < batchSize * 0.25 && GameState.funds >= GameState.doughCost) {
+      buyDoughBatch(true);
+    }
+  }
+
+  if (GameState.unlockedAutoPricer && GameState.autoPricerEnabled) {
+    applyAutoPrice();
+  }
+
+  updateDemand();
+  const maxDelivery = getEffectiveMaxDelivery() * getBuffMult("sales");
+  const effectiveDemand = Math.min(maxDelivery, maxDelivery * (GameState.demand / 100));
+  const desiredSales = effectiveDemand * dt;
+  const sold = Math.min(GameState.inventory, desiredSales);
+
+  if (sold > 0) {
+    GameState.inventory -= sold;
+    const earned = sold * getEffectivePriceSafe();
+    GameState.funds += earned;
+    if (!GameState._simulatingOffline) {
+      pendingSales += earned;
+      cashFlowHistory.push({ time: Date.now(), amount: earned });
+    }
+  }
+}
+
+function flushCashFlow() {
+  if (pendingSales > 0) {
+    pendingSales = 0;
+  }
+  const nowMs = Date.now();
+  const windowMs = 1500;
+  cashFlowHistory = cashFlowHistory.filter(entry => nowMs - entry.time <= windowMs);
+  const totalInWindow = cashFlowHistory.reduce((sum, entry) => sum + entry.amount, 0);
+  liveCashPerSec = totalInWindow / (windowMs / 1000);
+}
+
+function renderProjects() {
+  const container = getEl("projects-list");
+  if (!container) return;
+
+  const currentCont = GameState.continentIndex || 0;
+  const unlockedProjects = Projects.filter(p => {
+    if (GameState.completedProjects.includes(p.id)) return false;
+    if (p.minContinent && currentCont < p.minContinent) return false;
+    return p.trigger();
+  });
+
+  const completedCount = Projects.filter(p => GameState.completedProjects.includes(p.id)).length;
+  setText("rd-completed-count", completedCount);
+  setText("rd-total-count", Projects.length);
+
+  if (unlockedProjects.length > 0 || GameState.unlockedMinigame || GameState.unlockedPlinko || completedCount > 0) {
+    showEl("panel-projects");
+  }
+
+  const affordSig = unlockedProjects.map(p => {
+    const canAfford = GameState.funds >= p.cashCost && GameState.researchPoints >= (p.rpCost || 0);
+    return `${p.id}:${canAfford ? 1 : 0}`;
+  }).join("|");
+
+  if (container.dataset.renderedIds === unlockedProjects.map(p => p.id).join(",")) {
+    if (affordSig !== lastProjectAffordSig) {
+      lastProjectAffordSig = affordSig;
+      unlockedProjects.forEach(p => {
+        const btn = container.querySelector(`button[data-proj-id="${p.id}"]`);
+        if (btn) btn.disabled = !(GameState.funds >= p.cashCost && GameState.researchPoints >= (p.rpCost || 0));
+      });
+    }
+    return;
+  }
+
+  lastProjectAffordSig = affordSig;
+  container.dataset.renderedIds = unlockedProjects.map(p => p.id).join(",");
+  container.innerHTML = "";
+
+  unlockedProjects.forEach(proj => {
+    const rpCost = proj.rpCost || 0;
+    const canAfford = GameState.funds >= proj.cashCost && GameState.researchPoints >= rpCost;
+    const card = document.createElement("div");
+    card.className = "project-card" + (rpCost > 0 ? " rp-card" : "");
+
+    const costLabel = rpCost > 0
+      ? `$${FMT2.format(proj.cashCost)} + ${rpCost} RP`
+      : `$${FMT2.format(proj.cashCost)}`;
+
+    card.innerHTML = `
+      <div>
+        <p><strong>${proj.icon} ${proj.title}</strong></p>
+        <p class="subtext">${proj.desc}</p>
+      </div>
+      <button type="button" data-proj-id="${proj.id}" ${canAfford ? "" : "disabled"}>
+        Research (${costLabel})
+      </button>
+    `;
+
+    const btn = card.querySelector("button");
+    btn.addEventListener("click", () => {
+      if (GameState.funds >= proj.cashCost && GameState.researchPoints >= rpCost) {
+        GameState.funds -= proj.cashCost;
+        if (rpCost > 0) GameState.researchPoints -= rpCost;
+        GameState.completedProjects.push(proj.id);
+        proj.effect();
+        SoundSystem.playSfx("buy");
+        container.dataset.renderedIds = "";
+        requestRender();
       }
     });
 
-    grid.appendChild(card);
+    container.appendChild(card);
   });
 }
 
 function resetRegionalPanelsUI() {
-  pendingSales = 0;
-  cashFlowHistory = [];
-  liveCashPerSec = 0;
-  manualBakeHistory = [];
-  autoShooterTimer = 0;
-  plinkoBall = null;
-  lastPlinkoSignature.value = "";
-  lastStageAnimClass = "";
-  lastProjectAffordSig = "";
-  lastRangeTargetLefts = ["", "", "", "", ""];
-  lastCrosshairLeft = "";
-  lastModuleTierMap.clear();
-  lastTextCache.clear();
-
-  document.body.classList.remove("golden-rush-active");
-  hideEl("golden-rush-badge");
-  hideEl("income-rate-line");
-  hideEl("recipe-box");
-  hideEl("btn-toggle-autodough");
-  hideEl("btn-toggle-autopricer");
-  hideEl("panel-hand-dough");
-  hideEl("panel-automation");
   hideEl("system-supply-chain");
-  hideEl("refinery-rate-wrap");
   hideEl("system-delivery");
   hideEl("panel-trucks");
   hideEl("panel-drones");
   hideEl("panel-projects");
-  hideEl("rp-badge");
   hideEl("panel-minigame");
-  hideEl("range-shooter-controls");
   hideEl("panel-plinko");
-
-  const projectsList = getEl("projects-list");
-  if (projectsList) projectsList.innerHTML = "";
-
-  applySavedSectionCollapseStates();
+  hideEl("rp-badge");
+  hideEl("income-rate-line");
+  hideEl("btn-toggle-autodough");
+  hideEl("btn-toggle-autopricer");
+  hideEl("range-shooter-controls");
+  hideEl("refinery-rate-wrap");
+  hideEl("ending-modal");
+  refreshRecipeDropdown();
 }
 
 function applySessionUI() {
-  const activeName = (typeof GameState !== "undefined" && GameState.playerName) ? GameState.playerName : "Baker";
-  lastTextCache.delete("txt:display-player-name");
-  lastTextCache.delete("txt:ascii-stage");
-  setText("display-player-name", activeName);
-  const domPct = getDominanceForStage();
-  setText("ascii-stage", getEvolvedAscii());
-  applyStageAnimationTier(domPct);
-  hideEl("title-intro-screen");
-  hideEl("setup-modal");
+  if (!GameState.started) return;
+  setText("display-player-name", GameState.playerName || "Baker");
 
-  applyTheme(getPreferredThemeId(), false);
-  refreshRecipeDropdown();
-  applySavedSectionCollapseStates();
-  if (typeof AchievementManager !== "undefined") {
-    AchievementManager.updateButtonCount();
-  }
-
-  if (GameState.unlockedIncomeTicker) showEl("income-rate-line");
-  if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
-  if (GameState.unlockedAutoPricer) showEl("btn-toggle-autopricer");
-  if (GameState.unlockedAutomation) showEl("panel-automation");
-  if (GameState.unlockedSupplyChain) {
-    showEl("system-supply-chain");
-    if (GameState.refineries > 0) showEl("refinery-rate-wrap");
-  }
+  if (GameState.unlockedSupplyChain) showEl("system-supply-chain");
   if (GameState.unlockedTrucks || GameState.unlockedDrones) showEl("system-delivery");
   if (GameState.unlockedTrucks) showEl("panel-trucks");
   if (GameState.unlockedDrones) showEl("panel-drones");
   if (GameState.unlockedMinigame) {
+    showEl("panel-projects");
     showEl("rp-badge");
     showEl("panel-minigame");
     updateRangeTargetsUI();
   }
   if (GameState.unlockedRangeShooters) showEl("range-shooter-controls");
   if (GameState.unlockedPlinko) {
+    showEl("panel-projects");
     showEl("panel-plinko");
     renderPlinkoBoard(true);
   }
-  if (GameState.completedProjects.length > 0 || GameState.pretzels >= 20) {
-    showEl("panel-projects");
+  if (GameState.unlockedIncomeTicker) showEl("income-rate-line");
+  if (GameState.unlockedAutoDough) showEl("btn-toggle-autodough");
+  if (GameState.unlockedAutoPricer) showEl("btn-toggle-autopricer");
+  if (GameState.refineries > 0) showEl("refinery-rate-wrap");
+
+  refreshRecipeDropdown();
+  if (typeof AchievementManager !== "undefined") {
+    AchievementManager.updateButtonCount();
+  }
+  applySavedSectionCollapseStates();
+}
+
+function render() {
+  if (typeof GameState === "undefined") return;
+  sanitizeNumbers();
+
+  const floorPretzels = Math.floor(GameState.pretzels);
+  applyTabPretzelIconAndTitle(floorPretzels);
+
+  const playerNameStr = GameState.playerName || "Baker";
+  setText("display-player-name", playerNameStr);
+  setText("pretzels-total", floorPretzels.toLocaleString());
+  setText("top-funds", FMT2.format(GameState.funds));
+  setText("mobile-funds", FMT2.format(GameState.funds));
+
+  const contObj = typeof GameState.getCurrentContinent === "function"
+    ? GameState.getCurrentContinent()
+    : { name: "North America" };
+  const goldCount = GameState.goldenPretzels || 0;
+  setText("header-continent-name", contObj.name);
+  if (goldCount > 0 || GameState.goldUiUnlocked) {
+    showEl("header-gold-pill");
+    setText("header-gold-count", goldCount.toLocaleString());
+    setText("header-gold-bonus", `+${goldCount * 25}%`);
+  } else {
+    hideEl("header-gold-pill");
+  }
+
+  renderBuffBar();
+
+  const rushActive = typeof GameState.isGoldenRushActive === "function" && GameState.isGoldenRushActive();
+  if (rushActive) {
+    const secsLeft = Math.max(1, Math.ceil((GameState.goldenRushEndTime - Date.now()) / 1000));
+    showEl("golden-rush-badge");
+    setText("golden-rush-timer", secsLeft);
+    document.body.classList.add("golden-rush-active");
+  } else {
+    hideEl("golden-rush-badge");
+    document.body.classList.remove("golden-rush-active");
+  }
+
+  const domPct = getDominanceForStage();
+  const nextAscii = getEvolvedAscii();
+  if (lastTextCache.get("ascii:ascii-stage") !== nextAscii) {
+    lastTextCache.set("ascii:ascii-stage", nextAscii);
+    setText("ascii-stage", nextAscii);
+  }
+  applyStageAnimationTier(domPct);
+  updateAudioReactiveStage();
+
+  const floorInv = Math.floor(GameState.inventory);
+  const invEl = getEl("inventory");
+  setText("inventory", floorInv.toLocaleString());
+  if (invEl) invEl.classList.toggle("zero-danger", floorInv === 0 && GameState.pretzels > 0);
+
+  const floorDough = Math.floor(GameState.dough);
+  const doughEl = getEl("dough-amount");
+  setText("dough-amount", floorDough.toLocaleString());
+  if (doughEl) doughEl.classList.toggle("zero-danger", floorDough <= 0);
+
+  const batchSize = GameState.doughBatchSize || 500;
+  setText("dough-batch-size", batchSize.toLocaleString());
+  setText("dough-cost", FMT2.format(GameState.doughCost));
+
+  const outOfDough = GameState.dough < 1;
+  const broke = GameState.funds < GameState.doughCost;
+  if (outOfDough && broke) {
+    showEl("panel-hand-dough");
+    setText("knead-progress", GameState.kneadClicks);
+  } else {
+    hideEl("panel-hand-dough");
+  }
+
+  if (GameState.unlockedAutoDough) {
+    showEl("btn-toggle-autodough");
+    setText("btn-toggle-autodough", `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`);
+  }
+
+  if (GameState.unlockedAutoPricer) {
+    showEl("btn-toggle-autopricer");
+    setText("btn-toggle-autopricer", `Auto-Pricer: ${GameState.autoPricerEnabled ? "ON" : "OFF"}`);
+  }
+
+  setDisabled("btn-buy-dough", GameState.funds < GameState.doughCost);
+  setDisabled("btn-bake", GameState.dough < 1);
+  setDisabled("mobile-btn-bake", GameState.dough < 1);
+  setText("click-power", Math.max(1, Math.round((GameState.clickPower || 1) * getBuffMult("production"))));
+
+  const effectivePrice = getEffectivePriceSafe();
+  setText("price", FMT2.format(GameState.price));
+  setText("effective-price", FMT2.format(effectivePrice));
+  setText("demand", GameState.demand);
+  setDisabled("btn-price-down", GameState.price <= 0.05);
+
+  const promoInfo = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
+  setText("promo-level", GameState.promoLevel);
+  setText("promo-cost", FMT2.format(GameState.promoCost));
+  const promoBonusPct = Math.round(((1 + ((GameState.promoLevel - 1) * 0.20)) * promoInfo.mult - 1) * 100);
+  setText("promo-bonus", `+${promoBonusPct}%`);
+  setDisabled("btn-buy-promo", GameState.funds < GameState.promoCost);
+
+  const extInfo = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
+  setText("extruder-count", GameState.extruders);
+  setText("extruder-cost", FMT2.format(GameState.extruderCost));
+  setText("extruder-rate", FMT1.format(GameState.extruderSpeed * extInfo.mult));
+  setDisabled("btn-buy-extruder", GameState.funds < GameState.extruderCost);
+
+  if (GameState.unlockedSupplyChain) {
+    showEl("system-supply-chain");
+    const { saltPerSec, wheatPerSec, doughPerSec } = getActiveSupplyRates();
+    const payrollPerSec = getSupplyPayrollPerSec();
+
+    setText("salt-stock", Math.floor(GameState.salt || 0).toLocaleString());
+    setText("wheat-stock", Math.floor(GameState.wheat || 0).toLocaleString());
+    setText("salt-active-rate", Math.floor(saltPerSec).toLocaleString());
+    setText("wheat-active-rate", Math.floor(wheatPerSec).toLocaleString());
+    setText("dough-active-rate", Math.floor(doughPerSec).toLocaleString());
+    setText("supply-payroll-badge", FMT2.format(payrollPerSec));
+    setText("btn-toggle-supply", `Operations: ${GameState.supplyChainEnabled ? "ON" : "OFF"}`);
+
+    if (GameState.refineries > 0 || doughPerSec > 0) {
+      showEl("refinery-rate-wrap");
+      setText("refinery-active-rate", Math.floor(doughPerSec).toLocaleString());
+    }
+
+    const saltInfo = applyModuleTierUI("module-salt-mine", "salt-mine-tier-badge", "salt-mine-next", GameState.saltMines, "", "salt-mine-ascii", "saltMine");
+    setText("salt-mine-count", GameState.saltMines);
+    setText("salt-mine-cost", FMT2.format(GameState.saltMineCost));
+    setText("salt-mine-rate", Math.round(SALT_BASE_RATE * saltInfo.mult * (GameState.saltRateMult || 1)).toLocaleString());
+    setText("salt-mine-payroll", FMT2.format(getFacilityPayrollPerSec(GameState.saltMines, SALT_BASE_PAYROLL)));
+    setText("salt-mine-sell-val", FMT2.format(getSaltMineSellValue()));
+    setDisabled("btn-buy-salt-mine", GameState.funds < GameState.saltMineCost);
+    setDisabled("btn-sell-salt-mine", GameState.saltMines <= 0);
+
+    const wheatInfo = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms, "", "wheat-farm-ascii", "wheatFarm");
+    setText("wheat-farm-count", GameState.wheatFarms);
+    setText("wheat-farm-cost", FMT2.format(GameState.wheatFarmCost));
+    setText("wheat-farm-rate", Math.round(WHEAT_BASE_RATE * wheatInfo.mult * (GameState.wheatRateMult || 1)).toLocaleString());
+    setText("wheat-farm-payroll", FMT2.format(getFacilityPayrollPerSec(GameState.wheatFarms, WHEAT_BASE_PAYROLL)));
+    setText("wheat-farm-sell-val", FMT2.format(getWheatFarmSellValue()));
+    setDisabled("btn-buy-wheat-farm", GameState.funds < GameState.wheatFarmCost);
+    setDisabled("btn-sell-wheat-farm", GameState.wheatFarms <= 0);
+
+    const refInfo = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries, "", "refinery-ascii", "refinery");
+    setText("refinery-count", GameState.refineries);
+    setText("refinery-cost", FMT2.format(GameState.refineryCost));
+    setText("refinery-rate", Math.round(REFINERY_BASE_RATE * refInfo.mult * (GameState.refineryRateMult || 1)).toLocaleString());
+    setText("refinery-payroll", FMT2.format(getFacilityPayrollPerSec(GameState.refineries, REFINERY_BASE_PAYROLL)));
+    setText("refinery-sell-val", FMT2.format(getRefinerySellValue()));
+    setDisabled("btn-buy-refinery", GameState.funds < GameState.refineryCost);
+    setDisabled("btn-sell-refinery", GameState.refineries <= 0);
+  }
+
+  const truckInfo = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
+  setText("truck-count", GameState.trucks);
+  setText("truck-cost", FMT2.format(GameState.truckCost));
+  setText("truck-rate", FMT1.format(GameState.truckCapacity * truckInfo.mult));
+  setText("truck-sell-val", FMT2.format(getTruckSellValue()));
+  setDisabled("btn-buy-truck", GameState.funds < GameState.truckCost);
+  setDisabled("btn-sell-truck", GameState.trucks <= 0);
+
+  const droneInfo = applyModuleTierUI("panel-drones", "drone-tier-badge", "drone-next", GameState.drones, "", "drone-ascii", "drone");
+  setText("drone-count", GameState.drones);
+  setText("drone-cost", FMT2.format(GameState.droneCost));
+  setText("drone-rate", FMT1.format(GameState.droneCapacity * droneInfo.mult));
+  setText("drone-sell-val", FMT2.format(getDroneSellValue()));
+  setDisabled("btn-buy-drone", GameState.funds < GameState.droneCost);
+  setDisabled("btn-sell-drone", GameState.drones <= 0);
+
+  setText("bake-rate", FMT1.format(getEffectiveBakeRate()));
+  setText("sell-rate", FMT1.format(getEffectiveMaxDelivery()));
+  setText("rp-total", Math.floor(GameState.researchPoints));
+
+  if (GameState.unlockedRangeShooters) {
+    showEl("range-shooter-controls");
+    setText("range-shooter-count", GameState.rangeShooters || 0);
+    setText("range-shooter-interval", getRangeShooterIntervalSec().toFixed(2));
+    setText("range-shooter-cost", FMT2.format(GameState.rangeShooterCost));
+    setText("range-shooter-sell-val", FMT2.format(getRangeShooterSellValue()));
+    setDisabled("btn-buy-shooter", GameState.funds < GameState.rangeShooterCost);
+    setDisabled("btn-sell-shooter", (GameState.rangeShooters || 0) <= 0);
+  }
+
+  if (GameState.unlockedPlinko) {
+    setDisabled("btn-drop-plinko", Boolean(plinkoBall) || GameState.inventory < PLINKO_COST);
+    renderPlinkoBoard(false);
+  }
+
+  if (GameState.unlockedIncomeTicker) {
+    showEl("income-rate-line");
+    const netFlow = liveCashPerSec - getSupplyPayrollPerSec();
+    const isNeg = netFlow < -0.005;
+    const rateLine = getEl("income-rate-line");
+    if (rateLine) rateLine.classList.toggle("negative-flow", isNeg);
+    setText("income-sign", isNeg ? "-$" : "+$");
+    setText("income-per-sec", FMT2.format(Math.abs(netFlow)));
+  }
+
+  renderProjects();
+  if (typeof AchievementManager !== "undefined") {
+    AchievementManager.updateButtonCount();
+    AchievementManager.checkAll();
   }
 }
 
-function completeContinentExpansion() {
-  if (typeof AchievementManager === "undefined" || !AchievementManager.canExpandContinent()) return;
+let renderQueued = false;
+function requestRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => {
+    renderQueued = false;
+    render();
+  });
+}
 
-  const prevIdx = GameState.continentIndex || 0;
-  const isFinalEarthContinent = prevIdx === (typeof CONTINENTS !== "undefined" ? CONTINENTS.length - 1 : 6);
-  const capturedRunSecs = Math.floor(GameState.elapsedRunSeconds || 0);
-  const capturedRunPretzels = Math.floor(GameState.pretzels || 0);
-  const recordFlags = isFinalEarthContinent ? GameState.finalizeRunRecords() : {};
-  const recordsBeforeReset = {
-    ...recordFlags,
-    runSecs: capturedRunSecs,
-    runPretzels: capturedRunPretzels
-  };
+function shootRangeTarget() {
+  if (!GameState.unlockedMinigame) return;
+  const now = Date.now();
+  if (now - lastShotTime < 140) return;
+  lastShotTime = now;
 
-  const { earnedGold, conqueringFinalWorld } = GameState.expandToNextContinent();
-  const newCont = GameState.getCurrentContinent();
+  const track = getEl("range-track");
+  const targets = getActiveRangeTargets();
+  let bestDist = Infinity;
+  targets.forEach(pos => {
+    const d = Math.abs(crosshairPos - pos);
+    if (d < bestDist) bestDist = d;
+  });
 
-  resetRegionalPanelsUI();
-  updateDemand();
-  applySessionUI();
-  hideEl("achievements-modal");
-  SoundSystem.playSfx("prestige");
-
-  if (conqueringFinalWorld) {
-    const fastRunSecs = recordsBeforeReset.runSecs || Math.floor(GameState.bestRunSeconds || 0);
-    if (fastRunSecs > 0 && fastRunSecs <= 3600) {
-      applyTheme("diamond-sparkly", true);
-      logMessage(`SUB-HOUR EARTH CONQUEST! Unlocked Diamond Sparkly theme & banked +${earnedGold} Golden Pretzels [🥨★]!`);
-    } else {
-      applyTheme("gold-solid", true);
-      logMessage(`EARTH CONQUERED! Unlocked Solid Gold UI & banked +${earnedGold} Golden Pretzels [🥨★]! Pete Pretzel sent a letter.`);
+  if (bestDist <= 5.5) {
+    GameState.researchPoints += 3;
+    setText("range-feedback", "BULLSEYE! +3 RP");
+    if (track) {
+      track.classList.remove("flash-miss", "flash-hit");
+      void track.offsetWidth;
+      track.classList.add("flash-hit");
+      setTimeout(() => track.classList.remove("flash-hit"), 180);
     }
-    if (typeof syncAndFetchLeaderboard === "function") {
-      syncAndFetchLeaderboard(true);
+  } else if (bestDist <= 12) {
+    GameState.researchPoints += 2;
+    setText("range-feedback", "Solid hit! +2 RP");
+    if (track) {
+      track.classList.remove("flash-miss", "flash-hit");
+      void track.offsetWidth;
+      track.classList.add("flash-hit");
+      setTimeout(() => track.classList.remove("flash-hit"), 180);
     }
-    requestRender();
-    openEndingModal(recordsBeforeReset);
-    return;
+  } else {
+    GameState.researchPoints += 1;
+    setText("range-feedback", "Graze! +1 RP");
+    if (track) {
+      track.classList.remove("flash-hit", "flash-miss");
+      void track.offsetWidth;
+      track.classList.add("flash-miss");
+      setTimeout(() => track.classList.remove("flash-miss"), 180);
+    }
   }
-
-  const unlockedTheme = THEMES_CATALOG.find(t => !t.requiresGoldUi && !t.requiresAllAchievements && !t.requiresSubHourWin && t.minContinent === (GameState.continentIndex || 0));
-  const themeNotice = unlockedTheme ? ` New Theme Unlocked: ${unlockedTheme.name}!` : "";
-  logMessage(`EXPANDED TO ${newCont.name.toUpperCase()}! Banked +${earnedGold} Golden Pretzels [🥨★]!${themeNotice}`);
-  // News: announce the new continent right away (once-only; deduped via newsSeen).
-  if (typeof checkNewsMilestones === "function") checkNewsMilestones();
+  SoundSystem.playSfx("bake");
   requestRender();
+}
+
+function initSetupPicker() {
+  const grid = getEl("ascii-picker-grid");
+  if (!grid) return;
+  const gallery = getGallery();
+  grid.innerHTML = "";
+
+  const currentIdx = (typeof GameState !== "undefined" && Number.isInteger(GameState.selectedAsciiIndex))
+    ? Math.max(0, Math.min(gallery.length - 1, GameState.selectedAsciiIndex))
+    : 0;
+
+  gallery.forEach((art, idx) => {
+    const option = document.createElement("div");
+    option.className = "ascii-option" + (idx === currentIdx ? " selected" : "");
+    option.setAttribute("role", "button");
+    option.setAttribute("tabindex", "0");
+
+    const pre = document.createElement("pre");
+    pre.textContent = art;
+    option.appendChild(pre);
+
+    const selectOption = () => {
+      grid.querySelectorAll(".ascii-option").forEach(el => el.classList.remove("selected"));
+      option.classList.add("selected");
+      if (typeof GameState !== "undefined") {
+        GameState.selectedAsciiIndex = idx;
+      }
+      lastTextCache.delete("txt:ascii-stage");
+      const nextAscii = getEvolvedAscii();
+      setText("ascii-stage", nextAscii);
+      requestRender();
+    };
+
+    option.addEventListener("click", selectOption);
+    option.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectOption();
+      }
+    });
+
+    grid.appendChild(option);
+  });
 }
 
 function bindControls() {
   if (controlsBound) return;
   controlsBound = true;
 
-  SoundSystem.bindUI();
-
-  document.addEventListener("pointermove", (e) => {
-    lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
-  }, { passive: true });
-
-  document.addEventListener("pointerdown", (e) => {
-    if (typeof e.clientX === "number" && typeof e.clientY === "number") {
-      lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
-    }
-  }, { passive: true });
-
-  COLLAPSIBLE_SECTION_IDS.forEach(secId => {
-    onClick(`btn-collapse-${secId}`, () => toggleSectionCollapsed(secId));
-  });
-
-  onClick("btn-lb-pretzels", () => {
-    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("pretzels");
-  });
-
-  onClick("btn-lb-time", () => {
-    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("time");
-  });
-
-  onClick("intro-pretzel-trigger", () => {
-    openSetupModal();
-  });
-
-  onClick("btn-start-game", () => {
-    startGameFromModal();
-  });
+  // Intro pretzel trigger -> opens Shop Name & ASCII picker setup modal
+  const introTrigger = getEl("intro-pretzel-trigger");
+  if (introTrigger) {
+    introTrigger.addEventListener("click", (e) => {
+      e.preventDefault();
+      SoundSystem.ensureContext();
+      openSetupModal();
+    });
+  }
 
   const setupNameInput = getEl("input-player-name");
   if (setupNameInput) {
@@ -3080,191 +3533,23 @@ function bindControls() {
     });
   }
 
-  onClick("btn-continue-current-world", () => {
-    hideEl("ending-modal");
+  onClick("btn-start-game", () => {
+    startGameFromModal();
   });
 
-  onClick("btn-prestige-next-loop", () => {
-    hideEl("ending-modal");
-    applyTheme(hasSubHourFullRunWin() ? "diamond-sparkly" : "gold-solid", true);
-    SoundSystem.playSfx("prestige");
-    logMessage("New Earth Prestige Loop started with all Golden Pretzels and themes intact!");
-    requestRender();
+  document.querySelectorAll(".section-collapse-btn[data-section]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const secId = btn.getAttribute("data-section");
+      if (secId) toggleSectionCollapsed(secId);
+    });
   });
 
-  onClick("btn-bake", handleManualBake);
-  onClick("mobile-btn-bake", handleManualBake);
-
-  onClick("btn-cloud-login", async () => {
-    const email = (getEl("cloud-email")?.value || "").trim();
-    const password = getEl("cloud-password")?.value || "";
-    if (!email || !password) {
-      setText("cloud-menu-msg", "Enter email and password.");
-      return;
-    }
-    setDisabled("btn-cloud-login", true);
-    setDisabled("btn-cloud-signup", true);
-    const loginTimer = setTimeout(() => {
-      setText("cloud-menu-msg", "Login taking too long—check connection or try again.");
-      setDisabled("btn-cloud-login", false);
-      setDisabled("btn-cloud-signup", false);
-    }, 8000);
-    try {
-      setText("cloud-menu-msg", "Logging in...");
-      const data = await CloudSave.signIn(email, password);
-      if (data?.user) {
-        setText("cloud-menu-msg", "Logged in.");
-        await applyCloudUserSave(data.user);
-      }
-    } catch (err) {
-      setText("cloud-menu-msg", err.message || "Login failed.");
-    } finally {
-      clearTimeout(loginTimer);
-      setDisabled("btn-cloud-login", false);
-      setDisabled("btn-cloud-signup", false);
-    }
+  onClick("btn-bake", () => {
+    handleManualBake();
   });
 
-  onClick("btn-cloud-signup", async () => {
-    const email = (getEl("cloud-email")?.value || "").trim();
-    const password = getEl("cloud-password")?.value || "";
-    if (!email || password.length < 6) {
-      setText("cloud-menu-msg", "Enter email and a 6+ char password.");
-      return;
-    }
-    setDisabled("btn-cloud-login", true);
-    setDisabled("btn-cloud-signup", true);
-    try {
-      setText("cloud-menu-msg", "Creating account...");
-      const data = await CloudSave.signUp(email, password);
-      if (data?.user && data?.session) {
-        setText("cloud-menu-msg", "Account created and synced.");
-        await applyCloudUserSave(data.user);
-      } else {
-        setText("cloud-menu-msg", "Check email to confirm, then log in.");
-      }
-    } catch (err) {
-      setText("cloud-menu-msg", err.message || "Sign up failed.");
-    } finally {
-      setDisabled("btn-cloud-login", false);
-      setDisabled("btn-cloud-signup", false);
-    }
-  });
-
-  onClick("btn-cloud-sync-now", () => {
-    if (GameState.started && typeof CloudSave !== "undefined" && CloudSave.user) {
-      GameState.save(true, true);
-      if (typeof syncAndFetchLeaderboard === "function") {
-        syncAndFetchLeaderboard(true);
-      }
-      setText("cloud-menu-msg", "Synced to cloud.");
-    }
-  });
-
-  onClick("btn-cloud-logout", async () => {
-    if (GameState.started && typeof CloudSave !== "undefined" && CloudSave.user) {
-      GameState.save(true, true);
-    }
-    await CloudSave.signOut();
-    refreshCloudMenuUI();
-    setText("cloud-menu-msg", "Signed out of cloud.");
-  });
-
-  bindHoldButton("btn-buy-dough", () => {
-    if (buyDoughBatch(false)) {
-      requestRender();
-    }
-  }, {
-    initialDelay: 220,
-    repeatMs: 60,
-    onRelease: () => GameState.save(true)
-  });
-
-  onClick("btn-toggle-autodough", () => {
-    GameState.autoDoughEnabled = !GameState.autoDoughEnabled;
-    requestRender();
-  });
-
-  onClick("btn-toggle-autopricer", () => {
-    GameState.autoPricerEnabled = !GameState.autoPricerEnabled;
-    if (GameState.autoPricerEnabled) applyAutoPrice();
-    requestRender();
-  });
-
-  onClick("btn-toggle-supply", () => {
-    GameState.supplyChainEnabled = !GameState.supplyChainEnabled;
-    logMessage(`Supply Chain workers ${GameState.supplyChainEnabled ? "resumed" : "paused"}.`);
-    requestRender();
-  });
-
-  bindHoldButton("btn-buy-salt-mine", () => {
-    buySaltMineStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  onClick("btn-sell-salt-mine", () => {
-    if (GameState.saltMines > 0) {
-      const refund = getSaltMineSellValue();
-      GameState.saltMines -= 1;
-      GameState.funds += refund;
-      const baseCost = Math.round(2500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
-      GameState.saltMineCost = GameState.saltMines === 0
-        ? baseCost
-        : Math.round((GameState.saltMineCost / getCostGrowth(1.45, GameState.saltMines + 1)) * 100) / 100;
-      logMessage(`Sold 1 Rock Salt Mine for +$${refund.toFixed(2)}.`);
-      GameState.save(true);
-      requestRender();
-    }
-  });
-
-  bindHoldButton("btn-buy-wheat-farm", () => {
-    buyWheatFarmStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  onClick("btn-sell-wheat-farm", () => {
-    if (GameState.wheatFarms > 0) {
-      const refund = getWheatFarmSellValue();
-      GameState.wheatFarms -= 1;
-      GameState.funds += refund;
-      const baseCost = Math.round(4000.00 * GameState.getCurrentContinent().costScale * 100) / 100;
-      GameState.wheatFarmCost = GameState.wheatFarms === 0
-        ? baseCost
-        : Math.round((GameState.wheatFarmCost / getCostGrowth(1.45, GameState.wheatFarms + 1)) * 100) / 100;
-      logMessage(`Sold 1 Winter Wheat Field for +$${refund.toFixed(2)}.`);
-      GameState.save(true);
-      requestRender();
-    }
-  });
-
-  bindHoldButton("btn-buy-refinery", () => {
-    buyRefineryStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  onClick("btn-sell-refinery", () => {
-    if (GameState.refineries > 0) {
-      const refund = getRefinerySellValue();
-      GameState.refineries -= 1;
-      GameState.funds += refund;
-      const baseCost = Math.round(8500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
-      GameState.refineryCost = GameState.refineries === 0
-        ? baseCost
-        : Math.round((GameState.refineryCost / getCostGrowth(1.50, GameState.refineries + 1)) * 100) / 100;
-      if (GameState.refineries === 0) hideEl("refinery-rate-wrap");
-      logMessage(`Sold 1 Dough Refinery for +$${refund.toFixed(2)}.`);
-      GameState.save(true);
-      requestRender();
-    }
+  onClick("mobile-btn-bake", () => {
+    handleManualBake();
   });
 
   onClick("btn-knead-dough", () => {
@@ -3273,36 +3558,264 @@ function bindControls() {
       GameState.kneadClicks = 0;
       GameState.dough += 1;
       GameState.handMadeDoughTotal += 1;
-      SoundSystem.playSfx("buy");
-      spawnSubtleClickPop(getEl("btn-knead-dough"), "🥨 +1 lb");
+      spawnSubtleClickPop(getEl("btn-knead-dough"), "🥨 +1 lb dough");
       logMessage("Hand-kneaded +1 lb of emergency dough!");
-    } else {
-      SoundSystem.playSfx("bake");
     }
     requestRender();
   });
 
+  onClick("btn-buy-dough", () => {
+    buyDoughBatch(false);
+    requestRender();
+  });
+
+  onClick("btn-toggle-autodough", () => {
+    GameState.autoDoughEnabled = !GameState.autoDoughEnabled;
+    logMessage(`Auto-Dough Silo ${GameState.autoDoughEnabled ? "enabled" : "paused"}.`);
+    requestRender();
+  });
+
+  onClick("btn-toggle-autopricer", () => {
+    GameState.autoPricerEnabled = !GameState.autoPricerEnabled;
+    if (GameState.autoPricerEnabled) applyAutoPrice();
+    logMessage(`Auto-Pricer ${GameState.autoPricerEnabled ? "enabled" : "paused"}.`);
+    requestRender();
+  });
+
+  onClick("btn-toggle-supply", () => {
+    GameState.supplyChainEnabled = !GameState.supplyChainEnabled;
+    logMessage(`Supply Chain operations ${GameState.supplyChainEnabled ? "resumed" : "paused"}.`);
+    requestRender();
+  });
+
+  bindHoldButton("btn-price-down", (heldSecs) => {
+    const step = getExponentialPriceStep(heldSecs);
+    GameState.price = Math.max(0.05, Math.round((GameState.price - step) * 100) / 100);
+    updateDemand();
+    requestRender();
+  }, { onRelease: () => logMessage(`Price set to $${FMT2.format(GameState.price)}.`) });
+
+  bindHoldButton("btn-price-up", (heldSecs) => {
+    const step = getExponentialPriceStep(heldSecs);
+    GameState.price = Math.min(250.00, Math.round((GameState.price + step) * 100) / 100);
+    updateDemand();
+    requestRender();
+  }, { onRelease: () => logMessage(`Price set to $${FMT2.format(GameState.price)}.`) });
+
+  bindHoldButton("btn-buy-promo", () => {
+    buyPromoStep();
+  });
+
+  bindHoldButton("btn-buy-extruder", () => {
+    buyExtruderStep();
+  });
+
+  bindHoldButton("btn-buy-salt-mine", () => {
+    buySaltMineStep();
+  });
+
+  onClick("btn-sell-salt-mine", () => {
+    if (GameState.saltMines <= 0) return;
+    const refund = getSaltMineSellValue();
+    GameState.saltMines -= 1;
+    GameState.saltMineCost = Math.max(2500.00, Math.round((GameState.saltMineCost / getCostGrowth(1.45, GameState.saltMines + 1)) * 100) / 100);
+    GameState.funds += refund;
+    logMessage(`Sold 1 Rock Salt Mine for +$${FMT2.format(refund)}.`);
+    requestRender();
+  });
+
+  bindHoldButton("btn-buy-wheat-farm", () => {
+    buyWheatFarmStep();
+  });
+
+  onClick("btn-sell-wheat-farm", () => {
+    if (GameState.wheatFarms <= 0) return;
+    const refund = getWheatFarmSellValue();
+    GameState.wheatFarms -= 1;
+    GameState.wheatFarmCost = Math.max(4000.00, Math.round((GameState.wheatFarmCost / getCostGrowth(1.45, GameState.wheatFarms + 1)) * 100) / 100);
+    GameState.funds += refund;
+    logMessage(`Sold 1 Winter Wheat Field for +$${FMT2.format(refund)}.`);
+    requestRender();
+  });
+
+  bindHoldButton("btn-buy-refinery", () => {
+    buyRefineryStep();
+  });
+
+  onClick("btn-sell-refinery", () => {
+    if (GameState.refineries <= 0) return;
+    const refund = getRefinerySellValue();
+    GameState.refineries -= 1;
+    GameState.refineryCost = Math.max(8500.00, Math.round((GameState.refineryCost / getCostGrowth(1.50, GameState.refineries + 1)) * 100) / 100);
+    GameState.funds += refund;
+    logMessage(`Sold 1 Dough Refinery for +$${FMT2.format(refund)}.`);
+    requestRender();
+  });
+
+  bindHoldButton("btn-buy-truck", () => {
+    buyTruckStep();
+  });
+
+  onClick("btn-sell-truck", () => {
+    if (GameState.trucks <= 0) return;
+    const refund = getTruckSellValue();
+    GameState.trucks -= 1;
+    GameState.truckCost = Math.max(250.00, Math.round((GameState.truckCost / getCostGrowth(1.48, GameState.trucks + 1)) * 100) / 100);
+    GameState.funds += refund;
+    logMessage(`Sold 1 Delivery Truck for +$${FMT2.format(refund)}.`);
+    requestRender();
+  });
+
+  bindHoldButton("btn-buy-drone", () => {
+    buyDroneStep();
+  });
+
+  onClick("btn-sell-drone", () => {
+    if (GameState.drones <= 0) return;
+    const refund = getDroneSellValue();
+    GameState.drones -= 1;
+    GameState.droneCost = Math.max(5000.00, Math.round((GameState.droneCost / getCostGrowth(1.55, GameState.drones + 1)) * 100) / 100);
+    GameState.funds += refund;
+    logMessage(`Sold 1 Pretzel Drone for +$${FMT2.format(refund)}.`);
+    requestRender();
+  });
+
+  const recipeSelect = getEl("select-recipe");
+  if (recipeSelect) {
+    recipeSelect.addEventListener("change", (e) => {
+      GameState.activeRecipe = e.target.value;
+      updateDemand();
+      const recipeName = getSafeRecipe().name;
+      logMessage(`Active menu switched to ${recipeName}.`);
+      requestRender();
+    });
+  }
+
+  onClick("btn-shoot-target", () => {
+    shootRangeTarget();
+  });
+
+  const rangeTrack = getEl("range-track");
+  if (rangeTrack) {
+    rangeTrack.addEventListener("pointerdown", (e) => {
+      if (!GameState.unlockedMinigame) return;
+      e.preventDefault();
+      const rect = rangeTrack.getBoundingClientRect();
+      if (rect.width > 0) {
+        const pct = Math.max(4, Math.min(96, ((e.clientX - rect.left) / rect.width) * 100));
+        crosshairPos = pct;
+        const crosshairEl = getEl("range-crosshair");
+        if (crosshairEl) crosshairEl.style.left = `${crosshairPos.toFixed(1)}%`;
+      }
+      shootRangeTarget();
+    });
+  }
+
+  bindHoldButton("btn-buy-shooter", () => {
+    buyRangeShooterStep();
+  });
+
+  onClick("btn-sell-shooter", () => {
+    if ((GameState.rangeShooters || 0) <= 0) return;
+    const refund = getRangeShooterSellValue();
+    GameState.rangeShooters -= 1;
+    GameState.rangeShooterCost = Math.max(2500.00, Math.round((GameState.rangeShooterCost / getCostGrowth(1.48, GameState.rangeShooters + 1)) * 100) / 100);
+    GameState.funds += refund;
+    logMessage(`Sold 1 Range Shooter for +$${FMT2.format(refund)}.`);
+    requestRender();
+  });
+
+  onClick("btn-drop-plinko", () => {
+    dropPlinkoPretzel();
+  });
+
   onClick("btn-open-achievements", () => {
-    ensureTrophyRoomCollapsibles();
     if (typeof AchievementManager !== "undefined") {
       AchievementManager.renderModal();
     }
+    applyModalSectionCollapseUI("leaderboard", Boolean(readCollapsedSections().modal_leaderboard));
+    applyModalSectionCollapseUI("achievements", Boolean(readCollapsedSections().modal_achievements));
     showEl("achievements-modal");
+    if (typeof syncAndFetchLeaderboard === "function") {
+      syncAndFetchLeaderboard(true);
+    }
   });
 
   onClick("btn-close-achievements", () => {
     hideEl("achievements-modal");
   });
 
-  onClick("btn-expand-continent", completeContinentExpansion);
+  onClick("btn-lb-pretzels", () => {
+    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("pretzels");
+  });
+
+  onClick("btn-lb-time", () => {
+    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("time");
+  });
+
+  onClick("btn-lb-domination", () => {
+    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("domination");
+  });
+
+  onClick("btn-lb-gold", () => {
+    if (typeof AchievementManager !== "undefined") AchievementManager.setLeaderboardMode("gold");
+  });
+
+  onClick("btn-expand-continent", () => {
+    if (typeof AchievementManager === "undefined" || !AchievementManager.canExpandContinent()) return;
+    const nextName = GameState.getNextContinentName();
+    const { earnedGold, conqueringFinalWorld } = GameState.expandToNextContinent();
+    const records = conqueringFinalWorld ? GameState.finalizeRunRecords() : null;
+
+    resetRegionalPanelsUI();
+    updateDemand();
+    SoundSystem.onContinentChanged();
+    const areaTheme = getThemeIdForContinent(GameState.continentIndex || 0);
+    applyTheme(areaTheme, true);
+    applySessionUI();
+
+    if (conqueringFinalWorld) {
+      GameState.endingSeenForRun = true;
+      openEndingModal(records || {});
+      logMessage(`EARTH CONQUERED! Earned +${earnedGold} Golden Pretzels and unlocked Solid Gold UI!`);
+    } else {
+      triggerConfettiStarBurst(window.innerWidth * 0.5, window.innerHeight * 0.4, 12);
+      logMessage(`Expanded into ${nextName}! Earned +${earnedGold} Golden Pretzels (${GameState.goldenPretzels} total).`);
+    }
+
+    if (typeof syncAndFetchLeaderboard === "function") {
+      syncAndFetchLeaderboard(true);
+    }
+    if (typeof AchievementManager !== "undefined") {
+      AchievementManager.renderModal();
+    }
+    requestRender();
+  });
+
+  onClick("btn-continue-current-world", () => {
+    hideEl("ending-modal");
+    requestRender();
+  });
+
+  onClick("btn-prestige-next-loop", () => {
+    hideEl("ending-modal");
+    executePrestigeRun();
+  });
 
   onClick("player-badge", () => {
-    applyTheme(getPreferredThemeId(), false);
     refreshCloudMenuUI();
     refreshPrestigeMenuUI();
+    refreshThemeDropdown(true);
     SoundSystem.refreshControlsUI();
-    setText("cloud-menu-msg", "");
     showEl("restart-modal");
+  });
+
+  onClick("btn-close-restart", () => {
+    hideEl("restart-modal");
+  });
+
+  onClick("btn-cancel-restart", () => {
+    hideEl("restart-modal");
   });
 
   onClick("btn-open-prestige-confirm", () => {
@@ -3321,903 +3834,317 @@ function bindControls() {
   onClick("btn-cancel-confirm-modal", () => {
     pendingConfirmAction = null;
     hideEl("confirm-action-modal");
-    showEl("restart-modal");
   });
 
-  onClick("btn-execute-confirm-modal", () => {
+  onClick("btn-execute-confirm-modal", async () => {
     const action = pendingConfirmAction;
     pendingConfirmAction = null;
     if (action === "prestige") {
       executePrestigeRun();
     } else if (action === "wipe") {
-      executeFullWipe();
+      await executeFullWipe();
     }
   });
 
-  onClick("btn-close-restart", () => {
-    hideEl("restart-modal");
-  });
-
-  onClick("btn-cancel-restart", () => {
-    hideEl("restart-modal");
-  });
-
-  const themeSelect = getEl("select-theme");
-  if (themeSelect) {
-    themeSelect.addEventListener("change", (e) => {
+  const themeSel = getEl("select-theme");
+  if (themeSel) {
+    themeSel.addEventListener("change", (e) => {
       applyTheme(e.target.value, true);
-    });
-  }
-
-  bindHoldButton("btn-buy-promo", () => {
-    buyPromoStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  const recipeSelect = getEl("select-recipe");
-  if (recipeSelect) {
-    recipeSelect.addEventListener("change", (e) => {
-      GameState.activeRecipe = e.target.value;
-      updateDemand();
-      const r = getSafeRecipe();
-      logMessage(`Switched ovens to ${r.name}.`);
       requestRender();
     });
   }
 
-  bindHoldButton("btn-price-up", (heldSecs) => {
-    const step = getExponentialPriceStep(heldSecs);
-    GameState.price = Math.round((GameState.price + step) * 100) / 100;
-    updateDemand();
-    requestRender();
-  }, {
-    initialDelay: 180,
-    repeatMs: 55
-  });
-
-  bindHoldButton("btn-price-down", (heldSecs) => {
-    if (GameState.price > 0.05) {
-      const step = getExponentialPriceStep(heldSecs);
-      GameState.price = Math.max(0.05, Math.round((GameState.price - step) * 100) / 100);
-      updateDemand();
-      requestRender();
+  onClick("btn-cloud-login", async () => {
+    const email = (getEl("cloud-email")?.value || "").trim();
+    const pass = getEl("cloud-password")?.value || "";
+    const msgEl = getEl("cloud-menu-msg");
+    if (!email || !pass) {
+      if (msgEl) msgEl.textContent = "Enter both email and password.";
+      return;
     }
-  }, {
-    initialDelay: 180,
-    repeatMs: 55
-  });
-
-  bindHoldButton("btn-buy-extruder", () => {
-    buyExtruderStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  bindHoldButton("btn-buy-truck", () => {
-    buyTruckStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  onClick("btn-sell-truck", () => {
-    if (GameState.trucks > 0) {
-      const refund = getTruckSellValue();
-      GameState.trucks -= 1;
-      GameState.funds += refund;
-      const baseCost = Math.round(250.00 * GameState.getCurrentContinent().costScale * 100) / 100;
-      GameState.truckCost = GameState.trucks === 0
-        ? baseCost
-        : Math.round((GameState.truckCost / getCostGrowth(1.48, GameState.trucks + 1)) * 100) / 100;
-      logMessage(`Sold 1 Delivery Truck for +$${refund.toFixed(2)}.`);
-      GameState.save(true);
-      requestRender();
+    if (msgEl) msgEl.textContent = "Logging in...";
+    try {
+      const data = await CloudSave.signIn(email, pass);
+      if (msgEl) msgEl.textContent = "Logged in!";
+      await applyCloudUserSave(data.user);
+    } catch (err) {
+      if (msgEl) msgEl.textContent = err.message || "Login failed.";
     }
   });
 
-  bindHoldButton("btn-buy-drone", () => {
-    buyDroneStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 55,
-    onRelease: () => GameState.save(true)
-  });
-
-  onClick("btn-sell-drone", () => {
-    if (GameState.drones > 0) {
-      const refund = getDroneSellValue();
-      GameState.drones -= 1;
-      GameState.funds += refund;
-      const baseCost = Math.round(5000.00 * GameState.getCurrentContinent().costScale * 100) / 100;
-      GameState.droneCost = GameState.drones === 0
-        ? baseCost
-        : Math.round((GameState.droneCost / getCostGrowth(1.55, GameState.drones + 1)) * 100) / 100;
-      logMessage(`Sold 1 Pretzel Drone for +$${refund.toFixed(2)}.`);
-      GameState.save(true);
-      requestRender();
+  onClick("btn-cloud-signup", async () => {
+    const email = (getEl("cloud-email")?.value || "").trim();
+    const pass = getEl("cloud-password")?.value || "";
+    const msgEl = getEl("cloud-menu-msg");
+    if (!email || pass.length < 6) {
+      if (msgEl) msgEl.textContent = "Use a valid email and 6+ character password.";
+      return;
+    }
+    if (msgEl) msgEl.textContent = "Creating account...";
+    try {
+      const data = await CloudSave.signUp(email, pass);
+      if (data.session && data.user) {
+        if (msgEl) msgEl.textContent = "Account created & signed in!";
+        await applyCloudUserSave(data.user);
+      } else {
+        if (msgEl) msgEl.textContent = "Account created! Check email to confirm if required.";
+      }
+    } catch (err) {
+      if (msgEl) msgEl.textContent = err.message || "Sign up failed.";
     }
   });
 
-  onClick("btn-shoot-target", shootTarget);
-
-  bindHoldButton("btn-buy-shooter", () => {
-    buyRangeShooterStep();
-  }, {
-    initialDelay: 220,
-    repeatMs: 60,
-    onRelease: () => GameState.save(true)
+  onClick("btn-cloud-sync-now", async () => {
+    const msgEl = getEl("cloud-menu-msg");
+    if (!CloudSave.user) return;
+    if (msgEl) msgEl.textContent = "Syncing...";
+    await applyCloudUserSave(CloudSave.user);
+    if (msgEl) msgEl.textContent = "Synced with cloud!";
   });
 
-  onClick("btn-sell-shooter", () => {
-    if ((GameState.rangeShooters || 0) > 0) {
-      const refund = getRangeShooterSellValue();
-      GameState.rangeShooters -= 1;
-      GameState.funds += refund;
-      const baseCost = Math.round(2500.00 * GameState.getCurrentContinent().costScale * 100) / 100;
-      GameState.rangeShooterCost = GameState.rangeShooters === 0
-        ? baseCost
-        : Math.round((GameState.rangeShooterCost / getCostGrowth(1.48, GameState.rangeShooters + 1)) * 100) / 100;
-      logMessage(`Sold 1 Range Shooter for +$${refund.toFixed(2)}.`);
-      GameState.save(true);
-      requestRender();
-    }
+  onClick("btn-cloud-logout", async () => {
+    const msgEl = getEl("cloud-menu-msg");
+    await CloudSave.signOut();
+    refreshCloudMenuUI();
+    if (msgEl) msgEl.textContent = "Signed out.";
   });
 
-  onClick("btn-drop-plinko", dropPlinkoPretzel);
+  document.addEventListener("keydown", (e) => {
+    const activeTag = document.activeElement ? document.activeElement.tagName : "";
+    if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
 
-  window.addEventListener("keydown", (e) => {
+    const setupModal = getEl("setup-modal");
+    const restartModal = getEl("restart-modal");
+    const confirmModal = getEl("confirm-action-modal");
+    const achModal = getEl("achievements-modal");
+    const endingModal = getEl("ending-modal");
+    const introScreen = getEl("title-intro-screen");
+
     if (e.key === "Escape") {
-      hideEl("achievements-modal");
-      hideEl("confirm-action-modal");
-      hideEl("restart-modal");
+      if (confirmModal && !confirmModal.classList.contains("hidden")) {
+        pendingConfirmAction = null;
+        hideEl("confirm-action-modal");
+        return;
+      }
+      if (restartModal && !restartModal.classList.contains("hidden")) {
+        hideEl("restart-modal");
+        return;
+      }
+      if (achModal && !achModal.classList.contains("hidden")) {
+        hideEl("achievements-modal");
+        return;
+      }
+      if (endingModal && !endingModal.classList.contains("hidden")) {
+        hideEl("ending-modal");
+        return;
+      }
       return;
     }
 
-    const activeTag = document.activeElement ? document.activeElement.tagName : "";
-    if (activeTag === "INPUT" || activeTag === "SELECT" || activeTag === "TEXTAREA") return;
-    if (!GameState.started) return;
+    const anyModalOpen = (setupModal && !setupModal.classList.contains("hidden"))
+      || (restartModal && !restartModal.classList.contains("hidden"))
+      || (confirmModal && !confirmModal.classList.contains("hidden"))
+      || (achModal && !achModal.classList.contains("hidden"))
+      || (endingModal && !endingModal.classList.contains("hidden"));
 
-    if (e.code === "KeyB") {
+    if (introScreen && !introScreen.classList.contains("hidden") && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      openSetupModal();
+      return;
+    }
+
+    if (anyModalOpen || !GameState.started) return;
+
+    if (e.key === "b" || e.key === "B") {
       e.preventDefault();
       handleManualBake();
     } else if (e.code === "Space" && GameState.unlockedMinigame) {
       e.preventDefault();
-      shootTarget();
-    } else if (e.code === "KeyE" && GameState.unlockedPlinko) {
+      shootRangeTarget();
+    } else if ((e.key === "e" || e.key === "E") && GameState.unlockedPlinko) {
       e.preventDefault();
       dropPlinkoPretzel();
     }
   });
 }
 
-function canAffordProject(proj) {
-  const scale = typeof GameState.getCurrentContinent === "function" ? GameState.getCurrentContinent().costScale : 1;
-  const scaledCash = Math.round((proj.cashCost || 0) * scale * 100) / 100;
-  const hasCash = GameState.funds >= scaledCash;
-  const hasRP = GameState.researchPoints >= (proj.rpCost || 0);
-  return hasCash && hasRP;
-}
-
-function getScaledProjectCash(proj) {
-  const scale = typeof GameState.getCurrentContinent === "function" ? GameState.getCurrentContinent().costScale : 1;
-  return Math.round((proj.cashCost || 0) * scale * 100) / 100;
-}
-
-function formatProjectCost(proj) {
-  const parts = [];
-  const scaledCash = getScaledProjectCash(proj);
-  if (scaledCash > 0) {
-    parts.push(`$${scaledCash.toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
-  }
-  if (proj.rpCost > 0) {
-    parts.push(`${proj.rpCost} RP`);
-  }
-  return parts.join(" + ");
-}
-
-function checkUnlocks() {
-  if (!GameState.unlockedAutomation && GameState.funds >= 10) {
-    GameState.unlockedAutomation = true;
-    showEl("panel-automation");
-    logMessage("Automation unlocked.");
-  }
-
-  const projectsList = getEl("projects-list");
-  if (!projectsList) return;
-
-  Projects.forEach(proj => {
-    const meetsContinent = !proj.minContinent || (GameState.continentIndex || 0) >= proj.minContinent;
-    if (!GameState.completedProjects.includes(proj.id) && meetsContinent && proj.trigger()) {
-      showEl("panel-projects");
-
-      if (!getEl(`proj-${proj.id}`)) {
-        const affordable = canAffordProject(proj);
-        const isHybridRP = proj.rpCost > 0;
-        const card = document.createElement("div");
-        card.className = "project-card" + (affordable ? "" : " locked") + (isHybridRP ? " rp-card" : "");
-        card.id = `proj-${proj.id}`;
-        card.innerHTML = `
-          <p>${proj.icon || "[★]"} <strong>${proj.title}</strong> (${formatProjectCost(proj)})</p>
-          <p class="subtext">${proj.desc}</p>
-          <button id="btn-${proj.id}" ${affordable ? "" : "disabled"}>Research</button>
-        `;
-        projectsList.appendChild(card);
-
-        onClick(`btn-${proj.id}`, () => {
-          if (canAffordProject(proj)) {
-            const scaledCash = getScaledProjectCash(proj);
-            if (scaledCash > 0) GameState.funds -= scaledCash;
-            if (proj.rpCost > 0) GameState.researchPoints -= proj.rpCost;
-            GameState.completedProjects.push(proj.id);
-            SoundSystem.playSfx("buy");
-            proj.effect();
-            card.remove();
-            lastProjectAffordSig = "";
-            GameState.save(true);
-            requestRender();
-          }
-        });
-      }
-    }
-  });
-}
-
-let renderQueued = false;
-function requestRender() {
-  if (renderQueued) return;
-  renderQueued = true;
-  requestAnimationFrame(() => {
-    renderQueued = false;
-    render();
-  });
-}
-
-function render() {
-  if (document.hidden) return;
-
-  const promoTier = applyModuleTierUI("module-promo", "promo-tier-badge", "promo-next", GameState.promoLevel, "Lvl ", "promo-ascii", "marketing");
-  const extruderTier = applyModuleTierUI("panel-automation", "extruder-tier-badge", "extruder-next", GameState.extruders, "", "extruder-ascii", "extruder");
-  const truckTier = applyModuleTierUI("panel-trucks", "truck-tier-badge", "truck-next", GameState.trucks, "", "truck-ascii", "truck");
-  const droneTier = applyModuleTierUI("panel-drones", "drone-tier-badge", "drone-next", GameState.drones, "", "drone-ascii", "drone");
-
-  const saltTier = applyModuleTierUI("module-salt-mine", "salt-mine-tier-badge", "salt-mine-next", GameState.saltMines, "", "salt-mine-ascii", "saltMine");
-  const wheatTier = applyModuleTierUI("module-wheat-farm", "wheat-farm-tier-badge", "wheat-farm-next", GameState.wheatFarms, "", "wheat-farm-ascii", "wheatFarm");
-  const refineryTier = applyModuleTierUI("module-refinery", "refinery-tier-badge", "refinery-next", GameState.refineries, "", "refinery-ascii", "refinery");
-
-  if (typeof GameState.getCurrentContinent === "function") {
-    const cont = GameState.getCurrentContinent();
-    setText("header-continent-name", cont.name);
-    const goldCount = GameState.goldenPretzels || 0;
-    if (goldCount > 0) {
-      showEl("header-gold-pill");
-      setText("header-gold-count", goldCount.toLocaleString());
-      setText("header-gold-bonus", `+${goldCount * 25}%`);
-    } else {
-      hideEl("header-gold-pill");
-    }
-  }
-
-  const currentContIdx = GameState.continentIndex || 0;
-  const availableProjects = Projects.filter(p => !p.minContinent || currentContIdx >= p.minContinent);
-  const completedAvailableCount = availableProjects.filter(p => GameState.completedProjects.includes(p.id)).length;
-  setText("rd-completed-count", completedAvailableCount);
-  setText("rd-total-count", availableProjects.length);
-
-  if (GameState.unlockedRangeShooters) {
-    showEl("range-shooter-controls");
-    const shooterCount = GameState.rangeShooters || 0;
-    setText("range-shooter-count", shooterCount);
-    setText("range-shooter-interval", getRangeShooterIntervalSec().toFixed(2));
-    setText("range-shooter-cost", FMT2.format(GameState.rangeShooterCost));
-    setText("range-shooter-sell-val", FMT2.format(getRangeShooterSellValue()));
-    setDisabled("btn-buy-shooter", GameState.funds < GameState.rangeShooterCost);
-    setDisabled("btn-sell-shooter", shooterCount <= 0);
-  }
-
-  const bakeRate = getEffectiveBakeRate();
-  const maxDelivery = getEffectiveMaxDelivery();
-  const effectiveDelivery = maxDelivery * (GameState.demand / 100);
-  const netPrice = getEffectivePriceSafe();
-  const formattedFunds = FMT2.format(GameState.funds);
-
-  const wholePretzels = Math.floor(GameState.pretzels);
-  const wholeInventory = Math.floor(GameState.inventory);
-  const wholeDough = Math.floor(GameState.dough);
-  const batchSize = GameState.doughBatchSize || 500;
-
-  applyTabPretzelIconAndTitle(wholePretzels);
-
-  const rushRemainingMs = (GameState.goldenRushEndTime || 0) - Date.now();
-  if (rushRemainingMs > 0) {
-    if (!document.body.classList.contains("golden-rush-active")) {
-      document.body.classList.add("golden-rush-active");
-    }
-    showEl("golden-rush-badge");
-    setText("golden-rush-timer", Math.ceil(rushRemainingMs / 1000));
-  } else {
-    if (document.body.classList.contains("golden-rush-active")) {
-      document.body.classList.remove("golden-rush-active");
-    }
-    hideEl("golden-rush-badge");
-  }
-
-  setText("top-funds", formattedFunds);
-  setText("pretzels-total", wholePretzels.toLocaleString());
-  setText("inventory", wholeInventory.toLocaleString());
-  setText("rp-total", Math.floor(GameState.researchPoints).toLocaleString());
-  setText("price", GameState.price.toFixed(2));
-  const autoPricerOn = Boolean(GameState.unlockedAutoPricer && GameState.autoPricerEnabled);
-  if (GameState.unlockedAutoPricer) setText("btn-toggle-autopricer", `Auto-Pricer: ${autoPricerOn ? "ON" : "OFF"}`);
-  setDisabled("btn-price-up", autoPricerOn);
-  setDisabled("btn-price-down", autoPricerOn);
-  setText("effective-price", netPrice.toFixed(2));
-  setText("demand", GameState.demand);
-  setText("click-power", GameState.clickPower);
-
-  const invEl = getEl("inventory");
-  if (invEl) invEl.classList.toggle("zero-danger", wholeInventory <= 0);
-
-  const doughEl = getEl("dough-amount");
-  if (doughEl) doughEl.classList.toggle("zero-danger", wholeDough <= 0);
-
-  const incomeLineEl = getEl("income-rate-line");
-  if (GameState.unlockedIncomeTicker && incomeLineEl) {
-    showEl("income-rate-line");
-    const isNeg = liveCashPerSec < -0.005;
-    incomeLineEl.classList.toggle("negative-flow", isNeg);
-    setText("income-sign", isNeg ? "-$" : "+$");
-    setText("income-per-sec", FMT2.format(Math.abs(liveCashPerSec)));
-  }
-
-  if (GameState.unlockedSupplyChain) {
-    showEl("system-supply-chain");
-    const totalPayroll = getSupplyPayrollPerSec();
-    const { saltPerSec, wheatPerSec, doughPerSec } = getActiveSupplyRates();
-
-    setText("salt-stock", Math.floor(GameState.salt).toLocaleString());
-    setText("wheat-stock", Math.floor(GameState.wheat).toLocaleString());
-    setText("salt-active-rate", Math.floor(saltPerSec).toLocaleString());
-    setText("wheat-active-rate", Math.floor(wheatPerSec).toLocaleString());
-    setText("dough-active-rate", Math.floor(doughPerSec).toLocaleString());
-    setText("supply-payroll-badge", FMT2.format(totalPayroll));
-
-    if (GameState.refineries > 0) {
-      showEl("refinery-rate-wrap");
-      setText("refinery-active-rate", Math.floor(doughPerSec).toLocaleString());
-    } else {
-      hideEl("refinery-rate-wrap");
-    }
-
-    setText("btn-toggle-supply", `Operations: ${GameState.supplyChainEnabled ? "ON" : "OFF"}`);
-
-    const saltPayroll = getFacilityPayrollPerSec(GameState.saltMines, SALT_BASE_PAYROLL);
-    const effectiveSaltMult = saltTier.mult * (GameState.saltRateMult || 1);
-    setText("salt-mine-count", GameState.saltMines);
-    setText("salt-mine-cost", FMT2.format(GameState.saltMineCost));
-    setText("salt-mine-sell-val", FMT2.format(getSaltMineSellValue()));
-    setText("salt-mine-rate", (SALT_BASE_RATE * effectiveSaltMult).toLocaleString());
-    setText("salt-mine-payroll", FMT2.format(saltPayroll));
-    setDisabled("btn-buy-salt-mine", GameState.funds < GameState.saltMineCost);
-    setDisabled("btn-sell-salt-mine", GameState.saltMines <= 0);
-
-    const wheatPayroll = getFacilityPayrollPerSec(GameState.wheatFarms, WHEAT_BASE_PAYROLL);
-    const effectiveWheatMult = wheatTier.mult * (GameState.wheatRateMult || 1);
-    setText("wheat-farm-count", GameState.wheatFarms);
-    setText("wheat-farm-cost", FMT2.format(GameState.wheatFarmCost));
-    setText("wheat-farm-sell-val", FMT2.format(getWheatFarmSellValue()));
-    setText("wheat-farm-rate", (WHEAT_BASE_RATE * effectiveWheatMult).toLocaleString());
-    setText("wheat-farm-payroll", FMT2.format(wheatPayroll));
-    setDisabled("btn-buy-wheat-farm", GameState.funds < GameState.wheatFarmCost);
-    setDisabled("btn-sell-wheat-farm", GameState.wheatFarms <= 0);
-
-    const refineryPayroll = getFacilityPayrollPerSec(GameState.refineries, REFINERY_BASE_PAYROLL);
-    const effectiveRefineryMult = refineryTier.mult * (GameState.refineryRateMult || 1);
-    setText("refinery-count", GameState.refineries);
-    setText("refinery-cost", FMT2.format(GameState.refineryCost));
-    setText("refinery-sell-val", FMT2.format(getRefinerySellValue()));
-    setText("refinery-rate", (REFINERY_BASE_RATE * effectiveRefineryMult).toLocaleString());
-    setText("refinery-payroll", FMT2.format(refineryPayroll));
-    setDisabled("btn-buy-refinery", GameState.funds < GameState.refineryCost);
-    setDisabled("btn-sell-refinery", GameState.refineries <= 0);
-  }
-
-  const canAffordDough = GameState.funds >= GameState.doughCost;
-  const autoBuyerActive = Boolean(GameState.unlockedAutoDough && GameState.autoDoughEnabled);
-  const isOutAndBroke = GameState.dough < 1 && !canAffordDough && !autoBuyerActive;
-  if (isOutAndBroke) {
-    showEl("panel-hand-dough");
-  } else {
-    hideEl("panel-hand-dough");
-  }
-
-  setText("dough-amount", wholeDough.toLocaleString());
-  setText("dough-batch-size", batchSize.toLocaleString());
-  setText("dough-cost", FMT2.format(GameState.doughCost));
-  setDisabled("btn-buy-dough", !canAffordDough);
-  setDisabled("btn-bake", GameState.dough < 1);
-  setText("mobile-funds", formattedFunds);
-  setDisabled("mobile-btn-bake", GameState.dough < 1);
-  setText("knead-progress", GameState.kneadClicks);
-
-  setDisabled("btn-drop-plinko", Boolean(plinkoBall) || wholeInventory < PLINKO_COST);
-
-  const doughStatus = getEl("dough-status");
-  if (doughStatus) {
-    if (autoBuyerActive) {
-      setText("dough-status", "1 lb dough = 1 pretzel");
-      doughStatus.style.color = "";
-    } else if (GameState.dough < 1 && canAffordDough) {
-      setText("dough-status", "Out of dough! Click Buy above to restock.");
-      doughStatus.style.color = "#e89f48";
-    } else if (GameState.dough < 1) {
-      setText("dough-status", "OUT OF DOUGH & FUNDS! Use Emergency Maker.");
-      doughStatus.style.color = "#ff6b5b";
-    } else {
-      setText("dough-status", "1 lb dough = 1 pretzel");
-      doughStatus.style.color = "";
-    }
-  }
-
-  if (GameState.unlockedAutoDough) {
-    setText("btn-toggle-autodough", `Auto-Buyer: ${GameState.autoDoughEnabled ? "ON" : "OFF"}`);
-  }
-
-  const totalPromoPct = Math.round(((1 + (GameState.promoLevel - 1) * 0.20) * promoTier.mult - 1) * 100);
-  setText("promo-level", GameState.promoLevel);
-  setText("promo-cost", FMT2.format(GameState.promoCost));
-  setText("promo-bonus", `+${totalPromoPct}%`);
-  setDisabled("btn-buy-promo", GameState.funds < GameState.promoCost);
-
-  setText("bake-rate", FMT1.format(bakeRate));
-  setText("sell-rate", effectiveDelivery.toFixed(1));
-
-  setText("extruder-count", GameState.extruders);
-  setText("extruder-cost", FMT2.format(GameState.extruderCost));
-  setText("extruder-rate", (GameState.extruderSpeed * extruderTier.mult).toLocaleString());
-  setDisabled("btn-buy-extruder", GameState.funds < GameState.extruderCost);
-
-  const truckSellVal = getTruckSellValue();
-  setText("truck-count", GameState.trucks);
-  setText("truck-cost", FMT2.format(GameState.truckCost));
-  setText("truck-sell-val", FMT2.format(truckSellVal));
-  setText("truck-rate", (GameState.truckCapacity * truckTier.mult).toLocaleString());
-  setDisabled("btn-buy-truck", GameState.funds < GameState.truckCost);
-  setDisabled("btn-sell-truck", GameState.trucks <= 0);
-
-  const droneSellVal = getDroneSellValue();
-  setText("drone-count", GameState.drones);
-  setText("drone-cost", FMT2.format(GameState.droneCost));
-  setText("drone-sell-val", FMT2.format(droneSellVal));
-  setText("drone-rate", (GameState.droneCapacity * droneTier.mult).toLocaleString());
-  setDisabled("btn-buy-drone", GameState.funds < GameState.droneCost);
-  setDisabled("btn-sell-drone", GameState.drones <= 0);
-
-  const domPct = getDominanceForStage();
-  setText("ascii-stage", getEvolvedAscii());
-  applyStageAnimationTier(domPct);
-
-  const affordSig = `${Math.floor(GameState.funds)}:${Math.floor(GameState.researchPoints)}:${currentContIdx}`;
-  if (affordSig !== lastProjectAffordSig) {
-    lastProjectAffordSig = affordSig;
-    Projects.forEach(proj => {
-      const card = getEl(`proj-${proj.id}`);
-      const btn = getEl(`btn-${proj.id}`);
-      if (card && btn) {
-        const unaffordable = !canAffordProject(proj);
-        if (btn.disabled !== unaffordable) btn.disabled = unaffordable;
-        card.classList.toggle("locked", unaffordable);
-      }
-    });
-  }
-}
-
-function animateMinigames(timestamp) {
-  if (lastAnimTime === null) lastAnimTime = timestamp;
-  const dt = Math.min((timestamp - lastAnimTime) / 1000, 0.05);
+function gameLoop(timestamp) {
+  if (!lastAnimTime) lastAnimTime = timestamp;
+  const rawDt = (timestamp - lastAnimTime) / 1000;
   lastAnimTime = timestamp;
+  const dt = Math.min(Math.max(rawDt, 0.001), 0.25);
 
-  if (document.hidden || !GameState.started) {
-    requestAnimationFrame(animateMinigames);
-    return;
-  }
+  if (GameState.started) {
+    GameState.recordRunProgress(dt);
+    simulateEconomyStep(dt);
+    tickBuffs(dt);
+    flushCashFlow();
 
-  const projectsPanel = getEl("panel-projects");
-  const projectsVisible = Boolean(projectsPanel && !projectsPanel.classList.contains("hidden") && !projectsPanel.classList.contains("collapsed"));
-
-  if (GameState.unlockedMinigame) {
-    rangeAnimClock += dt;
-    const speedPercentPerSec = 95;
-    crosshairPos += crosshairDir * speedPercentPerSec * dt;
-
-    if (crosshairPos >= 94) {
-      crosshairPos = 94;
-      crosshairDir = -1;
-    } else if (crosshairPos <= 6) {
-      crosshairPos = 6;
-      crosshairDir = 1;
-    }
-
-    if (projectsVisible) {
-      const ch = getEl("range-crosshair");
-      if (ch) {
+    if (GameState.unlockedMinigame) {
+      rangeAnimClock += dt;
+      crosshairPos += crosshairDir * 68 * dt;
+      if (crosshairPos >= 92) {
+        crosshairPos = 92;
+        crosshairDir = -1;
+      } else if (crosshairPos <= 8) {
+        crosshairPos = 8;
+        crosshairDir = 1;
+      }
+      const crosshairEl = getEl("range-crosshair");
+      if (crosshairEl) {
         const nextLeft = `${crosshairPos.toFixed(1)}%`;
         if (lastCrosshairLeft !== nextLeft) {
           lastCrosshairLeft = nextLeft;
-          ch.style.left = nextLeft;
+          crosshairEl.style.left = nextLeft;
         }
       }
       updateRangeTargetsUI();
-    }
 
-    if (GameState.unlockedRangeShooters && (GameState.rangeShooters || 0) > 0) {
-      autoShooterTimer += dt;
-      const shotInterval = getRangeShooterIntervalSec();
-      if (autoShooterTimer >= shotInterval) {
-        autoShooterTimer %= shotInterval;
-        triggerAutoShooterShot();
-      }
-    } else {
-      autoShooterTimer = 0;
-    }
-  }
-
-  if (GameState.unlockedPlinko && (projectsVisible || plinkoBall)) {
-    if (!plinkoBall) {
-      const dropperSpeedColsPerSec = 17;
-      plinkoDropperPos += plinkoDropperDir * dropperSpeedColsPerSec * dt;
-      if (plinkoDropperPos >= PLINKO_COLS - 2) {
-        plinkoDropperPos = PLINKO_COLS - 2;
-        plinkoDropperDir = -1;
-      } else if (plinkoDropperPos <= 1) {
-        plinkoDropperPos = 1;
-        plinkoDropperDir = 1;
-      }
-      renderPlinkoBoard();
-    } else {
-      plinkoStepTimer += dt;
-      if (plinkoStepTimer >= 0.14) {
-        plinkoStepTimer = 0;
-        plinkoBall.row += 1;
-
-        let leftChance = 0.5;
-        if (plinkoBall.col < 7) leftChance = 0.42;
-        else if (plinkoBall.col > 11) leftChance = 0.58;
-
-        const nudge = Math.random() < leftChance ? -1 : 1;
-        plinkoBall.col = Math.max(1, Math.min(PLINKO_COLS - 2, plinkoBall.col + nudge));
-        renderPlinkoBoard();
-
-        if (plinkoBall.row >= PLINKO_ROWS) {
-          const landedCol = plinkoBall.col;
-          plinkoBall = null;
-          resolvePlinkoBucket(landedCol);
-          renderPlinkoBoard(true);
+      if ((GameState.rangeShooters || 0) > 0) {
+        autoShooterTimer += dt;
+        const interval = getRangeShooterIntervalSec();
+        if (autoShooterTimer >= interval) {
+          autoShooterTimer -= interval;
+          triggerAutoShooterShot();
         }
       }
     }
-  }
 
-  const achModal = getEl("achievements-modal");
-  if (achModal && !achModal.classList.contains("hidden") && typeof renderSpinningGlobe === "function") {
-    globeSpinTimer += dt;
-    if (globeSpinTimer >= 0.25) {
-      globeSpinTimer = 0;
-      globeSpinOffset = (globeSpinOffset + 1) % 30;
-      renderSpinningGlobe();
+    if (GameState.unlockedPlinko) {
+      tickPlinko(dt);
     }
-  }
 
-  requestAnimationFrame(animateMinigames);
-}
+    if (isLeaderboardVisible()) {
+      globeSpinTimer += dt;
+      if (globeSpinTimer >= 0.22) {
+        globeSpinTimer = 0;
+        globeSpinOffset = (globeSpinOffset + 1) % 30;
+        renderSpinningGlobe();
+      }
+    }
 
-// ---- Timed buffs. effects keys: production, income, demand (multipliers). ----
-function addBuff(id, label, effects, seconds) {
-  if (!Array.isArray(GameState.activeBuffs)) GameState.activeBuffs = [];
-  const existing = GameState.activeBuffs.find(b => b.id === id);
-  if (existing) {
-    existing.label = label;
-    existing.effects = effects;
-    existing.remaining = seconds;
-    existing.duration = seconds;
+    if (typeof NewsSystem !== "undefined" && typeof NewsSystem.tick === "function") {
+      NewsSystem.tick(dt);
+    }
+
+    render();
   } else {
-    GameState.activeBuffs.push({ id, label, effects, duration: seconds, remaining: seconds });
+    updateAudioReactiveStage();
   }
-  renderBuffBar();
+
+  requestAnimationFrame(gameLoop);
 }
 
-function getBuffMult(key) {
-  if (GameState._simulatingOffline) return 1;
-  let mult = 1;
-  for (const buff of GameState.activeBuffs || []) {
-    const v = buff.effects && buff.effects[key];
-    if (v > 0) mult *= v;
-  }
-  return mult;
-}
-
-function tickBuffs(dt) {
-  const buffs = GameState.activeBuffs;
-  if (!buffs || buffs.length === 0) return;
-  for (let i = buffs.length - 1; i >= 0; i--) {
-    buffs[i].remaining -= dt;
-    if (buffs[i].remaining <= 0) buffs.splice(i, 1);
-  }
-  renderBuffBar();
-}
-
-let lastBuffBarSig = null;
-function renderBuffBar() {
-  const bar = document.getElementById("buff-bar");
-  if (!bar) return;
-  const buffs = GameState.activeBuffs || [];
-  // Signature includes m:ss, so the DOM only updates when the list or a displayed second changes.
-  const sig = buffs.map(b => {
-    const s = Math.max(0, Math.ceil(b.remaining));
-    return `${b.id}|${b.label}|${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  }).join(";");
-  if (sig === lastBuffBarSig) return;
-  lastBuffBarSig = sig;
-  bar.classList.toggle("hidden", buffs.length === 0);
-  bar.textContent = "";
-  for (const b of buffs) {
-    const s = Math.max(0, Math.ceil(b.remaining));
-    const pill = document.createElement("span");
-    pill.className = "buff-pill";
-    pill.textContent = `${b.label} ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-    bar.appendChild(pill);
-  }
-}
-
-window.debugAddBuff = addBuff;
-
-// BETA.13: shared economy step used by the live tick AND offline catch-up.
-function simulateEconomyStep(dt) {
-  let tickNetCash = 0;
-  let tickRefinedDough = 0;
-
-  if (GameState.unlockedSupplyChain && GameState.supplyChainEnabled) {
-    const tickPayroll = getSupplyPayrollPerSec() * dt;
-    if (tickPayroll <= 0 || GameState.funds >= tickPayroll) {
-      if (tickPayroll > 0) {
-        GameState.funds -= tickPayroll;
-        tickNetCash -= tickPayroll;
-      }
-
-      const saltMult = getModuleTierInfo(GameState.saltMines).mult * (GameState.saltRateMult || 1);
-      const wheatMult = getModuleTierInfo(GameState.wheatFarms).mult * (GameState.wheatRateMult || 1);
-      const refineryMult = getModuleTierInfo(GameState.refineries).mult * (GameState.refineryRateMult || 1);
-
-      GameState.salt += (GameState.saltMines * SALT_BASE_RATE * saltMult) * dt;
-      GameState.wheat += (GameState.wheatFarms * WHEAT_BASE_RATE * wheatMult) * dt;
-
-      if (GameState.refineries > 0) {
-        const maxRefineCapacity = (GameState.refineries * REFINERY_BASE_RATE * refineryMult) * dt;
-        const actualRefined = Math.min(maxRefineCapacity, GameState.salt, GameState.wheat);
-        if (actualRefined > 0) {
-          GameState.salt -= actualRefined;
-          GameState.wheat -= actualRefined;
-          GameState.dough += actualRefined;
-          tickRefinedDough = actualRefined;
-        }
-      }
-    }
-  }
-
-  const batchSize = GameState.doughBatchSize || 500;
-  const extruderMult = getModuleTierInfo(GameState.extruders).mult;
-  const rawBakeRate = GameState.extruders * GameState.extruderSpeed * extruderMult * getBuffMult("production");
-  const autoThreshold = Math.max(100, batchSize * 0.25, rawBakeRate * dt);
-  if (GameState.unlockedAutoDough && GameState.autoDoughEnabled && GameState.dough < autoThreshold) {
-    let autoBuys = 0;
-    while (GameState.dough < autoThreshold && autoBuys < 200 && buyDoughBatch(true)) autoBuys++;
-  }
-  if (rawBakeRate > 0) {
-    const requestedTickBake = rawBakeRate * dt;
-    const fromExistingDough = Math.min(GameState.dough, requestedTickBake);
-    if (fromExistingDough > 0) {
-      bakePretzels(fromExistingDough);
-    }
-    const leftoverNeed = requestedTickBake - fromExistingDough;
-    if (leftoverNeed > 0 && tickRefinedDough > 0) {
-      bakePretzels(Math.min(GameState.dough, tickRefinedDough, leftoverNeed));
-    }
-  }
-
-  if (GameState.inventory > 0) {
-    const maxDelivery = getEffectiveMaxDelivery();
-    const demandFactor = (GameState.demand / 100) * getBuffMult("demand");
-    const netPrice = getEffectivePriceSafe();
-    pendingSales += (maxDelivery * demandFactor) * dt;
-
-    if (pendingSales >= 1) {
-      const wantToSell = Math.floor(pendingSales);
-      const actualSold = Math.min(GameState.inventory, wantToSell);
-      if (actualSold > 0) {
-        GameState.inventory -= actualSold;
-        const salesCash = actualSold * netPrice * getBuffMult("income");
-        GameState.funds += salesCash;
-        tickNetCash += salesCash;
-        pendingSales -= actualSold;
-      }
-    }
-  } else {
-    pendingSales = 0;
-  }
-  return tickNetCash;
-}
-
-async function bootGame() {
-  initStarfieldBackdrop();
-  applyTabPretzelIconAndTitle(0);
-  applyTheme("espresso", false);
-
-  if (typeof GameState === "undefined") {
-    logMessage("Error: state.js did not load. Check file folder.");
-    return;
-  }
-
+async function init() {
+  SoundSystem.bindUI();
   bindControls();
-
-  let offlineSeconds = 0;
-  try {
-    offlineSeconds = GameState.load();
-    sanitizeNumbers();
-  } catch (err) {
-    console.error("Save load error:", err);
-  }
-
-  applyTheme(getPreferredThemeId(), false);
-  applySavedSectionCollapseStates();
-
-  try {
-    updateDemand();
-    initSetupPicker();
-  } catch (err) {
-    console.error("Setup picker error:", err);
-  }
-
-  if (GameState.started) {
-    applySessionUI();
-    if (offlineSeconds > 5) {
-      const cappedNote = offlineSeconds >= 86400 ? " (24h max)" : "";
-      logMessage(`Welcome back, ${GameState.playerName}! Bakery ran for ${formatDuration(offlineSeconds)}${cappedNote} while away.`);
-    } else {
-      logMessage(`Welcome back, ${GameState.playerName}.`);
-    }
-  } else {
-    hideEl("setup-modal");
-    showEl("title-intro-screen");
-  }
-
-  try {
-    requestRender();
-    renderPlinkoBoard(true);
-  } catch (err) {
-    console.error("Initial render error:", err);
-  }
-
-  if (typeof CloudSave !== "undefined") {
-    (async () => {
-      try {
-        CloudSave.init();
-        const sessionUser = await CloudSave.getSessionUser();
-        refreshCloudMenuUI();
-        if (sessionUser) {
-          await applyCloudUserSave(sessionUser);
-        } else if (typeof syncAndFetchLeaderboard === "function") {
-          syncAndFetchLeaderboard(true);
-        }
-      } catch (err) {
-        console.error("Cloud sync error:", err);
-      } finally {
-        applyTheme(getPreferredThemeId(), false);
-      }
-    })();
-  }
-
-  requestAnimationFrame(animateMinigames);
-
-  let subsecondAccumulator = 0;
-  let slowCheckCounter = 0;
-  let lastTickMs = Date.now();
+  initStarfieldBackdrop();
+  scheduleStarTwinkle();
 
   setInterval(() => {
-    if (!GameState.started) {
-      lastTickMs = Date.now();
-      return;
+    if (Math.random() < SHOOTING_STAR_CHANCE) {
+      spawnRareShootingStar(true);
     }
-
-    // BETA.12: real elapsed time, so background tabs (throttled by the
-    // browser) still produce the right amount and the run timer stays honest.
-    const nowTickMs = Date.now();
-    let dt = (nowTickMs - lastTickMs) / 1000;
-    lastTickMs = nowTickMs;
-    if (!(dt > 0)) return;
-    dt = Math.min(dt, 120);
-
-    subsecondAccumulator += dt;
-    if (subsecondAccumulator >= 1) {
-      const wholeSecs = Math.floor(subsecondAccumulator);
-      subsecondAccumulator -= wholeSecs;
-      GameState.recordRunProgress(wholeSecs);
-    }
-
-    const tickNetCash = simulateEconomyStep(dt);
-    tickBuffs(dt);
-
-    GameState.recordRunProgress(0);
-
-    const nowMs = Date.now();
-    if (tickNetCash !== 0) {
-      cashFlowHistory.push({ time: nowMs, amount: tickNetCash });
-    }
-    const windowMs = 4000;
-    cashFlowHistory = cashFlowHistory.filter(entry => nowMs - entry.time <= windowMs);
-    const totalWindowCash = cashFlowHistory.reduce((sum, entry) => sum + entry.amount, 0);
-    const rawWindowRate = totalWindowCash / (windowMs / 1000);
-    liveCashPerSec = (liveCashPerSec * 0.85) + (rawWindowRate * 0.15);
-
-    if (!document.hidden && GameState.isGoldenRushActive() && Math.random() < 0.05) {
-      spawnFallingGoldenPretzel();
-    }
-
-    slowCheckCounter += 1;
-    if (slowCheckCounter >= 3) {
-      slowCheckCounter = 0;
-      if (GameState.unlockedAutoPricer && GameState.autoPricerEnabled) applyAutoPrice();
-      checkUnlocks();
-      if (typeof checkNewsMilestones === "function") checkNewsMilestones();
-      if (typeof AchievementManager !== "undefined") {
-        AchievementManager.checkAll();
-        AchievementManager.updateButtonCount();
-      }
-    }
-    if (document.hidden) applyTabPretzelIconAndTitle(GameState.pretzels);
-    requestRender();
-  }, 200);
+  }, SHOOTING_STAR_CHECK_MS);
 
   setInterval(() => {
-    if (GameState.started) {
+    if (typeof GameState !== "undefined" && GameState.started) {
       GameState.save(true);
       if (typeof syncAndFetchLeaderboard === "function") {
         syncAndFetchLeaderboard(false);
       }
     }
-  }, 15000);
+  }, 5000);
 
-  setInterval(() => {
-    if (typeof GameState !== "undefined" && GameState.started && Math.random() < SHOOTING_STAR_CHANCE) {
-      spawnRareShootingStar(true);
-    }
-  }, SHOOTING_STAR_CHECK_MS);
-  scheduleStarTwinkle();
-
-  const flushOnLeave = () => {
-    if (GameState.started) GameState.saveOnExit();
-  };
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      flushOnLeave();
-      if (SoundSystem.bgmEl) SoundSystem.bgmEl.pause();
+      if (typeof GameState !== "undefined" && GameState.started && typeof GameState.saveOnExit === "function") {
+        GameState.saveOnExit();
+      }
+      if (SoundSystem.bgmEl && !SoundSystem.bgmEl.paused) {
+        SoundSystem.bgmEl.pause();
+        SoundSystem._pausedForHidden = true;
+      }
     } else {
-      requestRender();
-      if (SoundSystem.enabledMusic && SoundSystem.bgmEl) {
-        SoundSystem.ensureContext();
+      if (typeof GameState !== "undefined" && GameState.started) {
+        GameState.lastTick = Date.now();
+        if (typeof syncAndFetchLeaderboard === "function") {
+          syncAndFetchLeaderboard(false);
+        }
+      }
+      if (SoundSystem.enabledMusic && SoundSystem._pausedForHidden) {
+        SoundSystem._pausedForHidden = false;
         SoundSystem.playBgm();
       }
     }
   });
-  window.addEventListener("pagehide", flushOnLeave);
+
+  window.addEventListener("pagehide", () => {
+    if (typeof GameState !== "undefined" && GameState.started && typeof GameState.saveOnExit === "function") {
+      GameState.saveOnExit();
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (typeof GameState !== "undefined" && GameState.started && typeof GameState.saveOnExit === "function") {
+      GameState.saveOnExit();
+    }
+  });
+
+  document.addEventListener("pointermove", (e) => {
+    if (typeof e.clientX === "number" && typeof e.clientY === "number") {
+      lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
+    }
+  }, { passive: true });
+
+  document.addEventListener("pointerdown", (e) => {
+    if (typeof e.clientX === "number" && typeof e.clientY === "number") {
+      lastPointerPos = { x: Math.round(e.clientX), y: Math.round(e.clientY) };
+    }
+  }, { passive: true });
+
+  const offlineSecs = typeof GameState !== "undefined" && typeof GameState.load === "function"
+    ? GameState.load()
+    : 0;
+
+  SoundSystem.syncAfterLoad();
+  sanitizeNumbers();
+  updateDemand();
+  applyTheme(getPreferredThemeId(), false);
+
+  if (typeof GameState !== "undefined" && GameState.started) {
+    hideEl("title-intro-screen");
+    hideEl("setup-modal");
+    applySessionUI();
+    if (offlineSecs > 5) {
+      logMessage(`Welcome back! Simulated ${formatDuration(offlineSecs)} offline.`);
+    } else {
+      logMessage(`Loaded ${GameState.playerName || "Baker"} (${getActiveGameVersion()}).`);
+    }
+  } else {
+    initSetupPicker();
+    showEl("title-intro-screen");
+  }
+
+  refreshCloudMenuUI();
+
+  if (typeof CloudSave !== "undefined" && CloudSave.init()) {
+    const existingUser = await CloudSave.getSessionUser();
+    if (existingUser) {
+      await applyCloudUserSave(existingUser);
+    }
+  }
+
+  if (typeof syncAndFetchLeaderboard === "function") {
+    syncAndFetchLeaderboard(false);
+  }
+
+  render();
+  requestAnimationFrame(gameLoop);
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootGame);
+  document.addEventListener("DOMContentLoaded", init);
 } else {
-  bootGame();
+  init();
 }

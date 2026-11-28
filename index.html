@@ -38,7 +38,7 @@
       <span class="intro-cta-label">click pretzel to start</span>
     </button>
 
-    <div class="intro-bottom-version">BETA.13 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
+    <div class="intro-bottom-version">BETA.14 • EARTH CONQUEST EDITION • BY: NATHAN WILLIAMSON</div>
   </div>
 
   <!-- Start Setup -->
@@ -126,7 +126,7 @@
         <div class="stat-tile">
           <span class="stat-label">Total Time (All Continents)</span>
           <strong id="hub-total-time-all-continents" class="stat-val">0s</strong>
-          <span class="subtext">Best Time Ever: <strong id="hub-best-time-ever">—</strong></span>
+          <span class="subtext">This Continent: <strong id="hub-continent-time">0s</strong> • Best Full Run: <strong id="hub-best-time-ever">—</strong></span>
         </div>
         <div class="stat-tile">
           <span class="stat-label">Pretzels This Run</span>
@@ -203,9 +203,11 @@
       <div class="leaderboard-panel">
         <div class="row-header" style="margin-bottom: 8px;">
           <h3>[🏪] Shop Leaderboard</h3>
-          <div class="btn-row" style="flex: 0 0 auto;">
+          <div class="btn-row" style="flex: 0 0 auto; flex-wrap: wrap;">
             <button type="button" id="btn-lb-pretzels" class="close-small-btn active">Most Pretzels</button>
             <button type="button" id="btn-lb-time" class="close-small-btn">Lowest Win Time</button>
+            <button type="button" id="btn-lb-domination" class="close-small-btn">Fastest Domination</button>
+            <button type="button" id="btn-lb-gold" class="close-small-btn">Lifetime [🥨★]</button>
           </div>
         </div>
         <div id="leaderboard-list" class="leaderboard-list"></div>
@@ -251,16 +253,23 @@
 
       <div class="option-group" style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-module);">
         <div class="module-head" style="margin-bottom: 8px;">
-          <label style="margin: 0;">Audio &amp; Space Chill Music</label>
-          <button type="button" id="btn-toggle-music" class="close-small-btn">Music: OFF</button>
+          <label style="margin: 0;">Audio &amp; Jukebox</label>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <span id="now-playing-ticker" class="tier-badge">♪ Beneath a Painted Sky</span>
+            <button type="button" id="btn-next-track-pill" class="close-small-btn" title="Switch Track">Next Track</button>
+            <button type="button" id="btn-toggle-music" class="close-small-btn">Music: OFF</button>
+          </div>
         </div>
 
-        <label for="select-music-track" style="margin-bottom: 4px;">Chill Track</label>
+        <label for="select-music-track" style="margin-bottom: 4px;">Jukebox Track</label>
         <select id="select-music-track" class="theme-select" style="margin-bottom: 10px;">
-          <option value="ps3-orbit.mp3">PS3 Space Orbit (Chill)</option>
-          <option value="nebula-drift.mp3">Nebula Drift (Spacey)</option>
-          <option value="midnight-bakery.mp3">Midnight Bakery Lo-Fi</option>
+          <option value="painted_sky.mp3">Beneath a Painted Sky</option>
         </select>
+
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px; cursor:pointer;">
+          <input type="checkbox" id="chk-music-autoshift" checked style="accent-color: var(--accent);">
+          Auto-shift track when I reach a new continent
+        </label>
 
         <label for="slider-music-vol" style="margin-bottom: 4px;">Music Volume: <strong id="music-vol-label">35%</strong></label>
         <input type="range" id="slider-music-vol" min="0" max="100" value="35" style="width: 100%; margin-bottom: 10px; accent-color: var(--accent);">
@@ -564,7 +573,7 @@
 
   </main>
 
-  <!-- BETA.13: mobile-only floating bottom bar (shown via CSS at max-width: 768px) -->
+  <!-- BETA.14: mobile-only floating bottom bar (shown via CSS at max-width: 768px) -->
   <div id="mobile-bar" class="mobile-bar">
     <div class="mobile-bar-funds">$<span id="mobile-funds">0.00</span></div>
     <button id="mobile-btn-bake" class="primary-btn">[🥨] Bake Pretzel</button>
@@ -586,5 +595,3 @@
   <script defer src="main.js"></script>
 </body>
 </html>
-
-
